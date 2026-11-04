@@ -32,4 +32,7 @@ export interface CoreEnv {
 
   /** Secret for signing the guest device cookie. */
   GUEST_COOKIE_SECRET: string;
+
+  /** Secret for authenticating admin RPC calls. */
+  ADMIN_SECRET?: string;
 }

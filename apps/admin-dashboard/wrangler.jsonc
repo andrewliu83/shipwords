@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shipwords-admin-dashboard",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+  "assets": { "binding": "STATIC" },
+  "services": [
+    {
+      "binding": "TINYDESKAI",
+      "service": "tinydeskai-example",
+      "environment": "production"
+    }
+  ]
+}

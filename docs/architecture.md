@@ -1,3 +1,11 @@
+---
+id: architecture
+type: architecture-design
+title: "shipwords 架构"
+status: active
+parent: goal
+---
+
 # Architecture
 
 shipwords is a monorepo for running one AI tool site per keyword. All sites share `packages/`; each site is deployed, configured and paid out on its own.

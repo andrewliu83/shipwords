@@ -1,0 +1,2 @@
+# Admin Dashboard secrets (local development)
+ADMIN_PASSWORD=your-secret-password
