@@ -4,12 +4,12 @@
 
 **新词站群的开源框架：一个下午上一个站，上线当天就能收钱。**
 
-[![CI](https://github.com/shipwords-dev/shipwords/actions/workflows/ci.yml/badge.svg)](https://github.com/shipwords-dev/shipwords/actions/workflows/ci.yml)
+[![CI](https://github.com/andrewliu83/shipwords/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewliu83/shipwords/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![TanStack Start](https://img.shields.io/badge/TanStack-Start-FF4154?logo=reactquery&logoColor=white)](https://tanstack.com/start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![GitHub stars](https://img.shields.io/github/stars/shipwords-dev/shipwords?style=flat&logo=github)](https://github.com/shipwords-dev/shipwords/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/andrewliu83/shipwords?style=flat&logo=github)](https://github.com/andrewliu83/shipwords/stargazers)
 
 [English](README.md) · **中文**
 
@@ -138,7 +138,7 @@ pnpm lint && pnpm test:tools
 
 ## 社区
 
-提问、想法和你上线的站，发到 [GitHub Discussions](https://github.com/shipwords-dev/shipwords/discussions)：[Q&A](https://github.com/shipwords-dev/shipwords/discussions/categories/q-a)、[Show and tell](https://github.com/shipwords-dev/shipwords/discussions/categories/show-and-tell)、[Ideas](https://github.com/shipwords-dev/shipwords/discussions/categories/ideas)。Bug 请提 [Issues](https://github.com/shipwords-dev/shipwords/issues)。
+提问、想法和你上线的站，发到 [GitHub Discussions](https://github.com/andrewliu83/shipwords/discussions)：[Q&A](https://github.com/andrewliu83/shipwords/discussions/categories/q-a)、[Show and tell](https://github.com/andrewliu83/shipwords/discussions/categories/show-and-tell)、[Ideas](https://github.com/andrewliu83/shipwords/discussions/categories/ideas)。Bug 请提 [Issues](https://github.com/andrewliu83/shipwords/issues)。
 
 ## 许可
 

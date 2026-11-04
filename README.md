@@ -4,12 +4,12 @@
 
 **An open-source framework for new-keyword site fleets: a new site in an afternoon, taking payments the day it launches.**
 
-[![CI](https://github.com/shipwords-dev/shipwords/actions/workflows/ci.yml/badge.svg)](https://github.com/shipwords-dev/shipwords/actions/workflows/ci.yml)
+[![CI](https://github.com/andrewliu83/shipwords/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewliu83/shipwords/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![TanStack Start](https://img.shields.io/badge/TanStack-Start-FF4154?logo=reactquery&logoColor=white)](https://tanstack.com/start)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![GitHub stars](https://img.shields.io/github/stars/shipwords-dev/shipwords?style=flat&logo=github)](https://github.com/shipwords-dev/shipwords/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/andrewliu83/shipwords?style=flat&logo=github)](https://github.com/andrewliu83/shipwords/stargazers)
 
 **English** · [中文](README.zh-CN.md)
 
@@ -138,7 +138,7 @@ pnpm lint && pnpm test:tools
 
 ## Community
 
-Questions, ideas and sites you shipped go in [GitHub Discussions](https://github.com/shipwords-dev/shipwords/discussions): [Q&A](https://github.com/shipwords-dev/shipwords/discussions/categories/q-a), [Show and tell](https://github.com/shipwords-dev/shipwords/discussions/categories/show-and-tell), [Ideas](https://github.com/shipwords-dev/shipwords/discussions/categories/ideas). Bugs go in [Issues](https://github.com/shipwords-dev/shipwords/issues).
+Questions, ideas and sites you shipped go in [GitHub Discussions](https://github.com/andrewliu83/shipwords/discussions): [Q&A](https://github.com/andrewliu83/shipwords/discussions/categories/q-a), [Show and tell](https://github.com/andrewliu83/shipwords/discussions/categories/show-and-tell), [Ideas](https://github.com/andrewliu83/shipwords/discussions/categories/ideas). Bugs go in [Issues](https://github.com/andrewliu83/shipwords/issues).
 
 ## License
 

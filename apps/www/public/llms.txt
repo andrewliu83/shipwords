@@ -11,7 +11,7 @@ If a human sent you here to build a site, follow these steps. Run the commands y
 3. Get the code. If the human has no fork yet, clone:
 
    ```bash
-   git clone https://github.com/shipwords-dev/shipwords && cd shipwords
+   git clone https://github.com/andrewliu83/shipwords && cd shipwords
    pnpm install
    ```
 
@@ -60,15 +60,15 @@ Then walk the human through the launch handbook below.
 
 ## Docs
 
-- [README](https://raw.githubusercontent.com/shipwords-dev/shipwords/main/README.md): what you get and quick start
-- [Rules for AI coding agents](https://raw.githubusercontent.com/shipwords-dev/shipwords/main/AGENTS.md)
-- [Local development](https://raw.githubusercontent.com/shipwords-dev/shipwords/main/docs/local-development.md): secrets, mock upstream, Stripe and PayPal test webhooks
-- [Site launch handbook](https://raw.githubusercontent.com/shipwords-dev/shipwords/main/docs/site-launch.md): domain, Cloudflare resources, secrets, payments, checks, deploy, search
-- [Architecture](https://raw.githubusercontent.com/shipwords-dev/shipwords/main/docs/architecture.md): design choices and trade-offs
+- [README](https://raw.githubusercontent.com/andrewliu83/shipwords/main/README.md): what you get and quick start
+- [Rules for AI coding agents](https://raw.githubusercontent.com/andrewliu83/shipwords/main/AGENTS.md)
+- [Local development](https://raw.githubusercontent.com/andrewliu83/shipwords/main/docs/local-development.md): secrets, mock upstream, Stripe and PayPal test webhooks
+- [Site launch handbook](https://raw.githubusercontent.com/andrewliu83/shipwords/main/docs/site-launch.md): domain, Cloudflare resources, secrets, payments, checks, deploy, search
+- [Architecture](https://raw.githubusercontent.com/andrewliu83/shipwords/main/docs/architecture.md): design choices and trade-offs
 
 ## Links
 
-- [GitHub](https://github.com/shipwords-dev/shipwords)
-- [Discussions](https://github.com/shipwords-dev/shipwords/discussions): search Q&A before asking; post setup questions in Q&A and launched sites in Show and tell
-- [Tiny Desk AI](https://tinydeskai.io/?utm_source=shipwords&utm_medium=llms): a live site built with shipwords; its source is in [sites/tinydeskai-example](https://github.com/shipwords-dev/shipwords/tree/main/sites/tinydeskai-example)
+- [GitHub](https://github.com/andrewliu83/shipwords)
+- [Discussions](https://github.com/andrewliu83/shipwords/discussions): search Q&A before asking; post setup questions in Q&A and launched sites in Show and tell
+- [Tiny Desk AI](https://tinydeskai.io/?utm_source=shipwords&utm_medium=llms): a live site built with shipwords; its source is in [sites/tinydeskai-example](https://github.com/andrewliu83/shipwords/tree/main/sites/tinydeskai-example)
 - [Yir](https://yir.ai/?utm_source=shipwords&utm_medium=llms): default generation API, one key for GPT Image, Nano Banana, Seedream, FLUX, Seedance, Veo, Kling, Wan and more
