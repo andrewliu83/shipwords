@@ -1,6 +1,6 @@
 import type { AdminJobItem } from '@shipwords/jobs/admin';
 import { createFileRoute } from '@tanstack/react-router';
-import { callSiteRpc } from '~/lib/site-rpc.server';
+import { getAdminJobs } from '~/lib/site-rpc';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -17,12 +17,8 @@ export const Route = createFileRoute('/jobs')({
     if (!activeSite) return { jobs: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const res = await callSiteRpc<{ jobs: AdminJobItem[] }>(
-        activeSite.binding,
-        'getJobs',
-        { limit: 50 },
-      );
-      return { jobs: res.jobs, activeSite, error: null };
+      const jobs = await getAdminJobs();
+      return { jobs, activeSite, error: null };
     } catch (err: unknown) {
       return {
         jobs: [],

@@ -1,7 +1,7 @@
 import type { AdminUserListItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
-import { getAdminUsers, grantCreditsRpc } from '~/lib/site-rpc.server';
+import { getAdminUsers, grantCreditsRpc } from '~/lib/site-rpc';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -50,9 +50,11 @@ function UsersPage() {
 
     try {
       await grantCreditsRpc({
-        siteId: activeSite.id,
-        userId: selectedUser.id,
-        amount: Number(grantAmount),
+        data: {
+          siteId: activeSite.id,
+          userId: selectedUser.id,
+          amount: Number(grantAmount),
+        },
       });
       setActionMsg({ text: `成功向 ${selectedUser.email} 充值 ${grantAmount} 积分！`, ok: true });
       setTimeout(() => {

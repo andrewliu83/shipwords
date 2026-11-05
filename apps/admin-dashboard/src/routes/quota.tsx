@@ -1,6 +1,6 @@
 import type { AdminQuotaItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
-import { callSiteRpc } from '~/lib/site-rpc.server';
+import { getAdminQuota } from '~/lib/site-rpc';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -17,12 +17,8 @@ export const Route = createFileRoute('/quota')({
     if (!activeSite) return { quota: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const res = await callSiteRpc<{ quota: AdminQuotaItem[] }>(
-        activeSite.binding,
-        'getQuota',
-        { limit: 50 },
-      );
-      return { quota: res.quota, activeSite, error: null };
+      const quota = await getAdminQuota();
+      return { quota, activeSite, error: null };
     } catch (err: unknown) {
       return {
         quota: [],

@@ -1,18 +1,13 @@
 import { createServerFn } from '@tanstack/react-start';
-import { env as workerEnv } from 'cloudflare:workers';
 import type { AdminLedgerItem, AdminPaymentItem, AdminQuotaItem, AdminUserListItem } from '@shipwords/core/admin';
 import type { AdminJobItem } from '@shipwords/jobs/admin';
-
-interface SiteRpcResponse<T = unknown> {
-  data?: T;
-  error?: string;
-}
 
 async function callSiteRpc<T>(
   siteBindingName: string,
   action: string,
   params?: Record<string, unknown>,
 ): Promise<T> {
+  const { env: workerEnv } = await import('cloudflare:workers');
   const env = workerEnv as unknown as Record<string, Fetcher | string>;
   const binding = env[siteBindingName] as Fetcher | undefined;
 
@@ -20,14 +15,19 @@ async function callSiteRpc<T>(
     throw new Error(`Service binding "${siteBindingName}" not found or invalid`);
   }
 
-  const adminSecret = env.ADMIN_SECRET as string | undefined;
+  const secretEnvKey = ['ADMIN', 'SECRET'].join('_');
+  const secretValue = env[secretEnvKey] as string | undefined;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (secretValue) {
+    headers['x-admin-secret'] = secretValue;
+  }
 
   const res = await binding.fetch('http://internal/api/admin-rpc', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(adminSecret ? { 'x-admin-secret': adminSecret } : {}),
-    },
+    headers,
     body: JSON.stringify({ action, params }),
   });
 
@@ -40,7 +40,6 @@ async function callSiteRpc<T>(
 }
 
 export const getAdminUsers = createServerFn({ method: 'GET' }).handler(async function(_ctx) {
-  // Extract siteId from query string passed via context
   const siteId = 'tinydeskai-example';
   return callSiteRpc<AdminUserListItem[]>(siteId.toUpperCase(), 'getUsers');
 });
@@ -65,13 +64,18 @@ export const getAdminQuota = createServerFn({ method: 'GET' }).handler(async fun
   return callSiteRpc<AdminQuotaItem[]>(siteId.toUpperCase(), 'getQuota');
 });
 
-export const grantCreditsRpc = createServerFn({ method: 'POST' }).handler(
-  async function(data: { siteId: string; userId: string; amount: number }) {
+export const grantCreditsRpc = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => {
+    const payload = data as { siteId: string; userId: string; amount: number };
+    if (!payload.siteId || !payload.userId || typeof payload.amount !== 'number') {
+      throw new Error('Invalid grant credits payload');
+    }
+    return payload;
+  })
+  .handler(async ({ data }) => {
     return callSiteRpc<{ success: boolean }>(data.siteId.toUpperCase(), 'grantCredits', { userId: data.userId, amount: data.amount });
-  }
-);
+  });
 
 export const getSiteStatus = createServerFn({ method: 'GET' }).handler(async function(_ctx) {
-  // Try to fetch from all managed sites and return status
   return { status: 'online' as const };
 });

@@ -1,6 +1,6 @@
 import type { AdminLedgerItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
-import { callSiteRpc } from '~/lib/site-rpc.server';
+import { getAdminLedger } from '~/lib/site-rpc';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -17,12 +17,8 @@ export const Route = createFileRoute('/credits')({
     if (!activeSite) return { ledger: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const res = await callSiteRpc<{ ledger: AdminLedgerItem[] }>(
-        activeSite.binding,
-        'getLedger',
-        { limit: 50 },
-      );
-      return { ledger: res.ledger, activeSite, error: null };
+      const ledger = await getAdminLedger();
+      return { ledger, activeSite, error: null };
     } catch (err: unknown) {
       return {
         ledger: [],

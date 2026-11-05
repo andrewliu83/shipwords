@@ -1,6 +1,6 @@
 import type { AdminPaymentItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
-import { callSiteRpc } from '~/lib/site-rpc.server';
+import { getAdminPayments } from '~/lib/site-rpc';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -17,12 +17,8 @@ export const Route = createFileRoute('/billing')({
     if (!activeSite) return { payments: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const res = await callSiteRpc<{ payments: AdminPaymentItem[] }>(
-        activeSite.binding,
-        'getPayments',
-        { limit: 50 },
-      );
-      return { payments: res.payments, activeSite, error: null };
+      const payments = await getAdminPayments();
+      return { payments, activeSite, error: null };
     } catch (err: unknown) {
       return {
         payments: [],
