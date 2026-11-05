@@ -1,7 +1,7 @@
 import type { AdminUserListItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
-import { getAdminUsers, grantCredits } from '~/lib/site-rpc.server';
+import { getAdminUsers, grantCreditsRpc } from '~/lib/site-rpc.server';
 import { MANAGED_SITES } from '~/lib/sites';
 
 interface SearchParams {
@@ -18,12 +18,8 @@ export const Route = createFileRoute('/users')({
     if (!activeSite) return { users: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const res = await callSiteRpc<{ users: AdminUserListItem[] }>(
-        activeSite.binding,
-        'getUsers',
-        { limit: 50 },
-      );
-      return { users: res.users, activeSite, error: null };
+      const users = await getAdminUsers();
+      return { users, activeSite, error: null };
     } catch (err: unknown) {
       return {
         users: [],
@@ -53,10 +49,10 @@ function UsersPage() {
     setActionMsg(null);
 
     try {
-      await callSiteRpc(activeSite.binding, 'grantCredits', {
+      await grantCreditsRpc({
+        siteId: activeSite.id,
         userId: selectedUser.id,
         amount: Number(grantAmount),
-        reason: grantReason,
       });
       setActionMsg({ text: `成功向 ${selectedUser.email} 充值 ${grantAmount} 积分！`, ok: true });
       setTimeout(() => {
