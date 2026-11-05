@@ -1,6 +1,7 @@
 import type { Db } from '@shipwords/core/db/client';
 import { isMp3, stripAudioTags } from './audio-tags';
 import type { Composer, ComposeSegment } from './compose';
+import { isCredentialError } from './credentials';
 import {
   appendUpstreamJob,
   loadJob,
@@ -31,7 +32,7 @@ export interface RunnerDeps {
   db: Db;
   bucket: R2Bucket;
   models: readonly ModelDefinition[];
-  adapters: Record<string, UpstreamAdapter>;
+  adapterFor: (job: JobRow) => Promise<UpstreamAdapter>;
   /** Effect compose (effect.compose); empty when the site binds no container, and jobs that need compose fail with a refund. */
   composer?: Composer;
   fetcher?: typeof fetch;
@@ -110,8 +111,14 @@ export async function runGeneration(deps: RunnerDeps, jobId: string, step: StepR
     await step.do('abort', async () => {
       // In a multi-part job some segments may still be running upstream: after fail + refund nobody needs them, so cancel to avoid wasted charges.
       const job = await loadJob(deps.db, jobId);
-      const adapter = job ? deps.adapters[job.upstream] : undefined;
-      if (job && adapter && !TERMINAL.includes(job.status)) await cancelAll(adapter, upstreamIds(job));
+      if (job && !TERMINAL.includes(job.status) && upstreamIds(job).length) {
+        try {
+          const adapter = await deps.adapterFor(job);
+          await cancelAll(adapter, upstreamIds(job));
+        } catch {
+          // Cleanup is best effort, including credential resolution; preserve the original failure.
+        }
+      }
       await markFailed(deps.db, jobId, 'failed', 'internal_error', message);
       return true;
     });
@@ -155,8 +162,9 @@ async function recordCost(deps: RunnerDeps, jobId: string, step: StepRunner): Pr
   for (let attempt = 0; attempt < COST_READS; attempt++) {
     const done = await step.do(`cost:${attempt}`, async () => {
       const job = await loadJob(deps.db, jobId);
-      const adapter = job ? deps.adapters[job.upstream] : undefined;
-      if (!job || !TERMINAL.includes(job.status) || !adapter?.cost) return true;
+      if (!job || !TERMINAL.includes(job.status)) return true;
+      const adapter = await deps.adapterFor(job);
+      if (!adapter.cost) return true;
       const ids = upstreamIds(job).filter((id) => !id.startsWith(SKIPPED));
       if (ids.length === 0) return true;
       const costs = await Promise.all(ids.map((id) => adapter.cost!(id)));
@@ -316,14 +324,28 @@ async function runSteps(deps: RunnerDeps, jobId: string, step: StepRunner): Prom
     });
     return;
   }
-  const adapter = deps.adapters[setup.upstream];
-  if (!adapter) {
-    await step.do('fail:upstream_missing', async () => {
-      await markFailed(deps.db, jobId, 'failed', 'upstream_missing', `no adapter for ${setup.upstream}`);
-      return true;
-    });
-    return;
-  }
+  // This proxy holds no secret. Every invocation occurs inside a step callback and resolves fresh credentials there.
+  const currentAdapter = async (required = true) => {
+    const job = await loadJob(deps.db, jobId);
+    if (!job) throw new Error('job not found');
+    try {
+      return await deps.adapterFor(job);
+    } catch (error) {
+      if (required && isCredentialError(error)) {
+        // Persist inside this step before any Workflow error serialization. markFailed is conditional;
+        // settlement retains the charge whenever the job records a real upstream task.
+        await markFailed(deps.db, jobId, 'failed', 'credential_unavailable', 'credential_unavailable');
+        throw new Error('credential_unavailable');
+      }
+      throw error;
+    }
+  };
+  const adapter: UpstreamAdapter = {
+    name: setup.upstream,
+    submit: async (input, key) => (await currentAdapter()).submit(input, key),
+    poll: async (id, wait) => (await currentAdapter()).poll(id, wait),
+    cancel: async (id) => (await currentAdapter(false)).cancel(id),
+  };
 
   // Single-part jobs keep their original step names and idempotency keys so old in-flight jobs line up on replay; older cached loads lack parts.
   const partIds = setup.parts ?? ['main'];

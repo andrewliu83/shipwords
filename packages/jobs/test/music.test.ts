@@ -180,7 +180,7 @@ describe('running a music job', () => {
     db,
     bucket: env.OUTPUTS,
     models,
-    adapters: { yir: adapter },
+    adapterFor: async () => adapter,
     fetcher: mp3Fetcher,
   });
 

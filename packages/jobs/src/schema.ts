@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const now = sql`(cast(unixepoch('subsec') * 1000 as integer))`;
 
@@ -19,6 +19,7 @@ export const jobs = sqliteTable(
     prompt: text('prompt').notNull(),
     inputJson: text('input_json').notNull(),
     overrideJson: text('override_json'),
+    credentialId: text('credential_id'),
     costCredits: integer('cost_credits').notNull().default(0),
     /** Guest quota counting rule, used to return quota on failure. */
     quotaJson: text('quota_json'),
@@ -54,3 +55,22 @@ export const modelOverrides = sqliteTable('model_overrides', {
   version: integer('version').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
+
+export const upstreamCredentials = sqliteTable(
+  'upstream_credentials',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    upstream: text('upstream').notNull(),
+    baseUrl: text('base_url'),
+    keyCiphertext: text('key_ciphertext').notNull(),
+    keyIv: text('key_iv').notNull(),
+    keyHint: text('key_hint').notNull(),
+    isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+    version: integer('version').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    archivedAt: integer('archived_at'),
+  },
+  (t) => [uniqueIndex('upstream_credentials_default_idx').on(t.upstream).where(sql`${t.isDefault} = 1`)],
+);

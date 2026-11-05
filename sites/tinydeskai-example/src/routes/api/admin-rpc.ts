@@ -9,6 +9,14 @@ import {
 } from '@shipwords/core/admin';
 import { errorResponse, json } from '@shipwords/core/http';
 import { getAdminJobs } from '@shipwords/jobs/admin';
+import {
+  archiveCredential,
+  type CredentialsEnv,
+  createCredential,
+  listCredentials,
+  setDefaultCredential,
+  updateCredential,
+} from '@shipwords/jobs/credentials';
 import { getModelConfig, setModelOverride } from '@shipwords/jobs/model-overrides';
 import { createFileRoute } from '@tanstack/react-router';
 import { core } from '~/core.server';
@@ -55,6 +63,20 @@ export const Route = createFileRoute('/api/admin-rpc')({
 
         try {
           switch (action) {
+            case 'listCredentials':
+              return json(await listCredentials(core.db));
+            case 'createCredential':
+              return json(
+                await createCredential(core.db, core.env as typeof core.env & CredentialsEnv, params),
+              );
+            case 'updateCredential':
+              return json(
+                await updateCredential(core.db, core.env as typeof core.env & CredentialsEnv, params),
+              );
+            case 'archiveCredential':
+              return json(await archiveCredential(core.db, params));
+            case 'setDefaultCredential':
+              return json(await setDefaultCredential(core.db, params));
             case 'getModelConfig':
               return json(await getModelConfig(core.db, models));
             case 'setModelOverride':
@@ -115,7 +137,12 @@ export const Route = createFileRoute('/api/admin-rpc')({
           }
         } catch (err: unknown) {
           if (err instanceof AdminRequestError) {
-            if (action === 'setModelOverride' || action === 'clearModelOverride')
+            if (
+              action === 'setModelOverride' ||
+              action === 'clearModelOverride' ||
+              action.endsWith('Credential') ||
+              action === 'listCredentials'
+            )
               return json({ error: err.message }, { status: err.status });
             return errorResponse(err.status, err.message);
           }

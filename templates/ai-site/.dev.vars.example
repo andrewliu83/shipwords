@@ -1,6 +1,8 @@
 # Copy to ~/.config/shipwords/<site>.dev.vars outside the repo, then run pnpm setup:worktree to link it in. Never commit real values.
 # Get a key at https://yir.ai/?utm_source=shipwords&utm_medium=starter — without it, set UPSTREAM_MOCK=1 to run with a mock upstream.
 YIR_API_KEY=
+# Optional for admin-managed upstream keys encrypted in D1. Generate with openssl rand -base64 32; keep stable and outside the repo.
+CREDENTIALS_KEY=
 APP_URL=http://localhost:5173
 BETTER_AUTH_SECRET=replace-with-32-random-bytes
 GOOGLE_CLIENT_ID=

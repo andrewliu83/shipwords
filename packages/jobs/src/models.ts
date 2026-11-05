@@ -3,6 +3,7 @@
 // cost cap, timeout and effect presets by ID. D1 overrides provide the effective price/configuration and are snapshotted on each job.
 
 export interface ModelDefinition {
+  credentialId?: string | null;
   enabled?: boolean;
   /** The site's model ID, used in URLs and requests. */
   id: string;

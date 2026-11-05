@@ -300,7 +300,7 @@ const deps = (adapter: FakeAdapter) => ({
   db,
   bucket: env.OUTPUTS,
   models,
-  adapters: { yir: adapter },
+  adapterFor: async () => adapter,
   fetcher: outputFetcher,
 });
 const succeeded = (name: string): PollResult => ({

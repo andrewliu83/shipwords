@@ -312,7 +312,7 @@ describe('editable model configuration', () => {
       {
         db,
         models: [model],
-        adapters: { yir: adapter },
+        adapterFor: async () => adapter,
         bucket: env.OUTPUTS,
         fetcher: async () => new Response(new Uint8Array([1])),
       },

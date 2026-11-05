@@ -233,6 +233,7 @@ export interface ModelOverride {
   upstreamModel?: string;
   maxCost?: string;
   timeoutMinutes?: number;
+  credentialId?: string | null;
   prep?: PrepOverride;
   segments?: Record<string, SegmentOverride>;
 }
@@ -246,6 +247,8 @@ export interface AdminModelConfigItem {
   id: string;
   name: string;
   kind: string;
+  upstream?: string;
+  credentialId?: string | null;
   defaults: ModelOverride;
   override: ModelOverride | null;
   version: number;
@@ -266,6 +269,50 @@ export interface ClearModelOverrideInput {
   siteId: string;
   modelId: string;
   expectedVersion: number;
+}
+
+export interface AdminCredentialItem {
+  id: string;
+  name: string;
+  upstream: string;
+  baseUrl: string | null;
+  keyHint: string;
+  isDefault: boolean;
+  archivedAt: number | null;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  modelCount: number;
+  activeJobCount: number;
+}
+
+export interface CreateCredentialInput {
+  siteId: string;
+  name: string;
+  upstream: string;
+  baseUrl?: string | null;
+  apiKey: string;
+}
+
+export interface UpdateCredentialInput {
+  siteId: string;
+  id: string;
+  expectedVersion: number;
+  name?: string;
+  baseUrl?: string | null;
+  apiKey?: string;
+}
+
+export interface ArchiveCredentialInput {
+  siteId: string;
+  id: string;
+  expectedVersion: number;
+}
+
+export interface SetDefaultCredentialInput {
+  siteId: string;
+  upstream: string;
+  id: string | null;
 }
 
 export const getModelConfig = createServerFn({ method: 'GET' })
@@ -339,4 +386,178 @@ export const clearModelOverride = createServerFn({ method: 'POST' })
       throw new Error('Invalid RPC response for clearModelOverride');
     }
     return response;
+  });
+
+export const getAdminCredentials = createServerFn({ method: 'GET' })
+  .validator(validateSite)
+  .handler(({ data }) => readList<AdminCredentialItem>(data.siteId, 'listCredentials', 'credentials'));
+
+export const createCredentialRpc = createServerFn({ method: 'POST' })
+  .validator((data: unknown): CreateCredentialInput => {
+    const { siteId } = validateSite(data);
+    if (!data || typeof data !== 'object') throw new Error('Invalid payload');
+    const payload = data as Partial<CreateCredentialInput>;
+    if (typeof payload.name !== 'string' || !payload.name.trim() || payload.name.trim().length > 100) {
+      throw new Error('Name is required and must be <= 100 characters');
+    }
+    if (typeof payload.upstream !== 'string' || !payload.upstream.trim()) {
+      throw new Error('Upstream is required');
+    }
+    if (typeof payload.apiKey !== 'string' || !payload.apiKey.trim() || payload.apiKey.length > 1024) {
+      throw new Error('apiKey is required and must be <= 1024 characters');
+    }
+    let baseUrl: string | null = null;
+    if (payload.baseUrl !== undefined && payload.baseUrl !== null && payload.baseUrl.trim() !== '') {
+      const url = payload.baseUrl.trim();
+      if (!url.startsWith('https://') || url.length > 512) {
+        throw new Error('baseUrl must start with https:// and be <= 512 characters');
+      }
+      try {
+        new URL(url);
+      } catch {
+        throw new Error('Invalid baseUrl URL');
+      }
+      baseUrl = url;
+    }
+    return {
+      siteId,
+      name: payload.name.trim(),
+      upstream: payload.upstream.trim(),
+      baseUrl,
+      apiKey: payload.apiKey.trim(),
+    };
+  })
+  .handler(async ({ data }) => {
+    const response = await callSiteRpc<{ id: string; version: number }>(data.siteId, 'createCredential', {
+      name: data.name,
+      upstream: data.upstream,
+      baseUrl: data.baseUrl,
+      apiKey: data.apiKey,
+    });
+    if (!response || typeof response.id !== 'string' || typeof response.version !== 'number') {
+      throw new Error('Invalid RPC response for createCredential');
+    }
+    return response;
+  });
+
+export const updateCredentialRpc = createServerFn({ method: 'POST' })
+  .validator((data: unknown): UpdateCredentialInput => {
+    const { siteId } = validateSite(data);
+    if (!data || typeof data !== 'object') throw new Error('Invalid payload');
+    const payload = data as Partial<UpdateCredentialInput>;
+    if (typeof payload.id !== 'string' || !payload.id.trim()) {
+      throw new Error('id is required');
+    }
+    if (
+      typeof payload.expectedVersion !== 'number' ||
+      !Number.isSafeInteger(payload.expectedVersion) ||
+      payload.expectedVersion < 0
+    ) {
+      throw new Error('expectedVersion must be a non-negative integer');
+    }
+    const result: UpdateCredentialInput = {
+      siteId,
+      id: payload.id.trim(),
+      expectedVersion: payload.expectedVersion,
+    };
+    if (payload.name !== undefined) {
+      if (typeof payload.name !== 'string' || !payload.name.trim() || payload.name.trim().length > 100) {
+        throw new Error('Name must be non-empty and <= 100 characters');
+      }
+      result.name = payload.name.trim();
+    }
+    if (payload.baseUrl !== undefined) {
+      if (payload.baseUrl === null || payload.baseUrl.trim() === '') {
+        result.baseUrl = null;
+      } else {
+        const url = payload.baseUrl.trim();
+        if (!url.startsWith('https://') || url.length > 512) {
+          throw new Error('baseUrl must start with https:// and be <= 512 characters');
+        }
+        try {
+          new URL(url);
+        } catch {
+          throw new Error('Invalid baseUrl URL');
+        }
+        result.baseUrl = url;
+      }
+    }
+    if (payload.apiKey !== undefined && payload.apiKey !== '') {
+      if (typeof payload.apiKey !== 'string' || !payload.apiKey.trim() || payload.apiKey.length > 1024) {
+        throw new Error('apiKey must be <= 1024 characters');
+      }
+      result.apiKey = payload.apiKey.trim();
+    }
+    return result;
+  })
+  .handler(async ({ data }) => {
+    const params: Record<string, unknown> = {
+      id: data.id,
+      expectedVersion: data.expectedVersion,
+    };
+    if (data.name !== undefined) params.name = data.name;
+    if (data.baseUrl !== undefined) params.baseUrl = data.baseUrl;
+    if (data.apiKey !== undefined) params.apiKey = data.apiKey;
+
+    const response = await callSiteRpc<{ version: number }>(data.siteId, 'updateCredential', params);
+    if (!response || typeof response.version !== 'number') {
+      throw new Error('Invalid RPC response for updateCredential');
+    }
+    return response;
+  });
+
+export const archiveCredentialRpc = createServerFn({ method: 'POST' })
+  .validator((data: unknown): ArchiveCredentialInput => {
+    const { siteId } = validateSite(data);
+    if (!data || typeof data !== 'object') throw new Error('Invalid payload');
+    const payload = data as Partial<ArchiveCredentialInput>;
+    if (typeof payload.id !== 'string' || !payload.id.trim()) {
+      throw new Error('id is required');
+    }
+    if (
+      typeof payload.expectedVersion !== 'number' ||
+      !Number.isSafeInteger(payload.expectedVersion) ||
+      payload.expectedVersion < 0
+    ) {
+      throw new Error('expectedVersion must be a non-negative integer');
+    }
+    return {
+      siteId,
+      id: payload.id.trim(),
+      expectedVersion: payload.expectedVersion,
+    };
+  })
+  .handler(async ({ data }) => {
+    const response = await callSiteRpc<{ version: number }>(data.siteId, 'archiveCredential', {
+      id: data.id,
+      expectedVersion: data.expectedVersion,
+    });
+    if (!response || typeof response.version !== 'number') {
+      throw new Error('Invalid RPC response for archiveCredential');
+    }
+    return response;
+  });
+
+export const setDefaultCredentialRpc = createServerFn({ method: 'POST' })
+  .validator((data: unknown): SetDefaultCredentialInput => {
+    const { siteId } = validateSite(data);
+    if (!data || typeof data !== 'object') throw new Error('Invalid payload');
+    const payload = data as Partial<SetDefaultCredentialInput>;
+    if (typeof payload.upstream !== 'string' || !payload.upstream.trim()) {
+      throw new Error('upstream is required');
+    }
+    const id =
+      payload.id === undefined || payload.id === null || payload.id.trim() === '' ? null : payload.id.trim();
+    return {
+      siteId,
+      upstream: payload.upstream.trim(),
+      id,
+    };
+  })
+  .handler(async ({ data }) => {
+    await callSiteRpc<Record<string, unknown>>(data.siteId, 'setDefaultCredential', {
+      upstream: data.upstream,
+      id: data.id,
+    });
+    return { success: true };
   });

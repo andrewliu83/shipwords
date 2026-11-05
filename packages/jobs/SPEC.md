@@ -16,6 +16,7 @@ depends-on: [pkg-core]
 - **lifecycle.ts** — job状态变更原语：createJob、markSubmitted、markSucceeded、markFailed、cancelQueued；条件UPDATE防止状态回退
 - **upstream.ts** — 上游适配器接口：submit/poll/cancel/cost；适配器不接触数据库
 - **yir.ts** — Yir.ai SDK 适配器（默认上游）
+- **credentials.ts** — 上游 URL / API Key 管理：AES-256-GCM 加密存 D1，AAD 为凭据 ID，主密钥 `CREDENTIALS_KEY` 来自 env；版本条件修改、归档引用保护、每个 upstream 唯一默认凭据；管理接口仅返回末四位提示
 - **mock.ts** — 本地开发 mock 上游：无需API key，完整测试 upload→charge→poll→deliver→refund 链路
 - **models.ts** — definePublicModels / serverModels；浏览器可见字段 vs 服务端字段分离
 - **handlers.ts** — 生成请求处理：createJobs（含服务端创建重试 + idempotency）
@@ -34,3 +35,4 @@ depends-on: [pkg-core]
 - 模型覆盖：建任务时读一次生效配置，按生效价格扣费，快照写入 `jobs.override_json` 与任务行、扣费同一 D1 批次；runner 只用快照，不读当前覆盖；幂等重试按落库任务的快照比较请求
 - 覆盖值只能改白名单字段，并经过与代码默认值相同的校验；金额按微美元整数精确汇总，最多 6 位小数
 - 提示词为 `{{name}}` 字符串模板，变量由站点代码函数计算；默认模板渲染结果须与原函数逐字一致
+- 凭据按模型覆盖 → upstream 默认 → env 解析，解析失败在扣费前拒绝；解析结果 `jobs.credential_id` 与任务行、快照、扣费同批写入，mock 忽略凭据。runner 与取消任务通过 `adapterFor(job)` 在每次调用上游的 step 内读取、解密当前凭据；明文不进 step 结果、日志和错误信息。归档不阻止已有任务使用；用户已接受修改账号可能影响在途任务。

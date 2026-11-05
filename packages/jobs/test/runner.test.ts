@@ -5,6 +5,7 @@ import { user } from '@shipwords/core/db/schema';
 import { consumeQuota } from '@shipwords/core/quota/counters';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
+import { CredentialError } from '../src/credentials';
 import { cancelQueued, loadJob, markFailed, markSubmitted, markSucceeded, spendKey } from '../src/lifecycle';
 import { defineModels } from '../src/models';
 import { emailOnFinish } from '../src/notify';
@@ -98,11 +99,85 @@ const deps = (adapter: FakeAdapter) => ({
   db,
   bucket: env.OUTPUTS,
   models,
-  adapters: { yir: adapter },
+  adapterFor: async () => adapter,
   fetcher: outputFetcher,
 });
 
 describe('generation jobs', () => {
+  it('preserves the upstream failure and refund when cleanup cannot resolve credentials', async () => {
+    const { userId, jobId } = await paidJob();
+    const adapter = new FakeAdapter();
+    let cleanup = false;
+    adapter.poll = async () => {
+      cleanup = true;
+      return { state: 'failed', code: 'upstream_failed', message: 'provider failed' };
+    };
+    await runGeneration(
+      {
+        ...deps(adapter),
+        adapterFor: async () => {
+          if (cleanup) throw new CredentialError();
+          return adapter;
+        },
+      },
+      jobId,
+      immediateSteps(),
+    );
+    expect(await loadJob(db, jobId)).toMatchObject({ status: 'failed', errorCode: 'upstream_failed' });
+    expect((await getBalance(db, userId)).available).toBe(50);
+  });
+
+  it('preserves timeout and refund when cancellation cleanup cannot resolve credentials', async () => {
+    const { userId, jobId } = await paidJob(10, {
+      status: 'submitted',
+      upstreamJobId: 'up_paid',
+      createdAt: Date.now() - 11 * 60_000,
+    });
+    await runGeneration(
+      {
+        ...deps(new FakeAdapter()),
+        adapterFor: async () => {
+          throw new CredentialError();
+        },
+      },
+      jobId,
+      immediateSteps(),
+    );
+    expect(await loadJob(db, jobId)).toMatchObject({ status: 'failed', errorCode: 'timeout' });
+    expect((await getBalance(db, userId)).available).toBe(50);
+  });
+
+  it('does not send refund emails for submitted credential failures in any locale', async () => {
+    for (const defaultLocale of ['en', 'zh-CN', 'ja', 'ko']) {
+      const { userId, jobId } = await paidJob(10, { status: 'submitted', upstreamJobId: 'up_paid' });
+      await db.insert(user).values({ id: userId, name: 'U', email: `${userId}@example.com` });
+      const send = vi.fn(async () => ({ messageId: 'm1' }));
+      const notify = emailOnFinish({
+        db,
+        email: { send } as unknown as SendEmail,
+        from: 'noreply@example.com',
+        site: { name: 'Demo', defaultLocale },
+        baseURL: 'https://demo.test',
+      });
+      await runGeneration(
+        {
+          ...deps(new FakeAdapter()),
+          adapterFor: async () => {
+            throw new CredentialError();
+          },
+          notify,
+        },
+        jobId,
+        immediateSteps(),
+      );
+      const job = (await loadJob(db, jobId))!;
+      expect(job).toMatchObject({ status: 'failed', errorCode: 'credential_unavailable' });
+      await notify(job);
+      expect(send).not.toHaveBeenCalled();
+      expect((await getBalance(db, userId)).available).toBe(40);
+    }
+  });
+
   it('retries a transient snapshot read failure without canceling or refunding an already submitted job', async () => {
     const { userId, jobId } = await paidJob(10, { status: 'submitted', upstreamJobId: 'up_existing' });
     const adapter = new FakeAdapter();
@@ -457,7 +532,11 @@ describe('Yir not configured', () => {
   it('missing API key fails as non-retryable with a refund, job never hangs', async () => {
     const { userId, jobId } = await paidJob();
     const adapter = new YirAdapter({ apiKey: '' });
-    await runGeneration({ ...deps(new FakeAdapter()), adapters: { yir: adapter } }, jobId, immediateSteps());
+    await runGeneration(
+      { ...deps(new FakeAdapter()), adapterFor: async () => adapter },
+      jobId,
+      immediateSteps(),
+    );
     expect(await loadJob(db, jobId)).toMatchObject({ status: 'failed', errorCode: 'yir_not_configured' });
     expect((await getBalance(db, userId)).available).toBe(50);
   });
@@ -486,7 +565,7 @@ describe('Yir errors', () => {
     });
     const steps: string[] = [];
     await runGeneration(
-      { ...deps(new FakeAdapter()), adapters: { yir: adapter } },
+      { ...deps(new FakeAdapter()), adapterFor: async () => adapter },
       jobId,
       immediateSteps(steps),
     );

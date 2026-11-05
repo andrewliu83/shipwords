@@ -1,10 +1,12 @@
 import { AdminRequestError } from '@shipwords/core/admin';
 import type { Db } from '@shipwords/core/db/client';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { credentialAvailable, resolveCredential } from './credentials';
 import { creditsFor, type ModelDefinition, promptPlaceholders, usdMicros, validateModel } from './models';
 import { modelOverrides } from './schema';
 
 export type ModelOverride = {
+  credentialId?: string | null;
   enabled?: boolean;
   credits?: number;
   upstreamModel?: string;
@@ -32,6 +34,7 @@ function object(
     throw new Error(`${where} must be an object`);
   for (const [key, field] of Object.entries(value)) {
     if (!allowed.includes(key)) throw new Error(`${where}: field ${key} is not editable`);
+    if (key === 'credentialId' && field === null) continue;
     if (field === undefined || field === null) throw new Error(`${where}.${key} must have a value`);
     if (!fields) continue;
     if (['upstreamModel', 'prompt', 'promptTemplate', 'maxCost'].includes(key) && typeof field !== 'string')
@@ -55,10 +58,16 @@ export function effectiveModel(code: ModelDefinition, value: unknown): ModelDefi
   }
   const raw = object(
     value,
-    ['enabled', 'credits', 'upstreamModel', 'maxCost', 'timeoutMinutes', 'prep', 'segments'],
+    ['enabled', 'credits', 'upstreamModel', 'maxCost', 'timeoutMinutes', 'prep', 'segments', 'credentialId'],
     'override',
   );
   const override = raw as ModelOverride;
+  if (
+    'credentialId' in raw &&
+    override.credentialId !== null &&
+    (typeof override.credentialId !== 'string' || !override.credentialId)
+  )
+    throw new Error('credentialId must be a nonempty string or null');
   if ('enabled' in raw && typeof override.enabled !== 'boolean') throw new Error('enabled must be boolean');
   if (
     'credits' in raw &&
@@ -196,6 +205,8 @@ export async function getModelConfig(db: Db, models: readonly ModelDefinition[])
           id: model.id,
           name: model.name,
           kind: model.kind,
+          upstream: model.upstream,
+          credentialId: override?.credentialId ?? null,
           defaults,
           override,
           version,
@@ -252,20 +263,24 @@ export async function setModelOverride(
     throw new AdminRequestError(400, error instanceof Error ? error.message : String(error));
   }
   const values = { overrideJson: JSON.stringify(override), version: expected + 1, updatedAt: Date.now() };
+  const credentialId = (override as ModelOverride | null)?.credentialId;
+  if (credentialId) await resolveCredential(db, code.upstream, credentialId);
+  const available = credentialId ? credentialAvailable(credentialId, code.upstream) : sql`1`;
   // Keep a tombstone on clear: resetting the version would permit stale writers after a clear (ABA).
   const result =
     expected === 0
-      ? await db
-          .insert(modelOverrides)
-          .values({ modelId: code.id, ...values })
-          .onConflictDoNothing()
-          .run()
+      ? await db.run(
+          sql`insert into ${modelOverrides} (model_id, override_json, version, updated_at) select ${code.id}, ${values.overrideJson}, ${values.version}, ${values.updatedAt} where ${available} on conflict (model_id) do nothing`,
+        )
       : await db
           .update(modelOverrides)
           .set(values)
-          .where(and(eq(modelOverrides.modelId, code.id), eq(modelOverrides.version, expected)))
+          .where(and(eq(modelOverrides.modelId, code.id), eq(modelOverrides.version, expected), available))
           .run();
-  if (!result.meta.changes) throw new AdminRequestError(409, 'model configuration version conflict');
+  if (!result.meta.changes) {
+    if (credentialId) await resolveCredential(db, code.upstream, credentialId);
+    throw new AdminRequestError(409, 'model configuration version conflict');
+  }
   return { version: expected + 1 };
 }
 

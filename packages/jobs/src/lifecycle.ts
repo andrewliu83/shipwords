@@ -122,8 +122,18 @@ export async function cancelQueued(db: Db, jobId: string): Promise<JobRow | null
  * upstream may already have charged us (a cancel just before the result lands), and returning it would let one guest loop create → cancel forever.
  * Succeeded jobs do nothing.
  */
+export function failureRefundBlocked(job: Pick<JobRow, 'errorCode' | 'upstreamJobId'>): boolean {
+  return (
+    job.errorCode === 'credential_unavailable' &&
+    upstreamIds(job).some((id) => !id.startsWith(SKIPPED_UPSTREAM))
+  );
+}
+
 export async function settleFailure(db: Db, job: JobRow): Promise<void> {
   if (job.status !== 'failed' && job.status !== 'canceled') return;
+  // Credential failure after a real submission cannot undo the provider charge. The final code and IDs
+  // are durable, so repeated settlement and stale healing make the same decision without a new money write.
+  if (failureRefundBlocked(job)) return;
   if (job.costCredits > 0 && job.userId) {
     await refundSpend(db, {
       spendIdemKey: spendKey(job.id),

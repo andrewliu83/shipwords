@@ -1,8 +1,10 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useId, useMemo, useRef, useState } from 'react';
 import {
+  type AdminCredentialItem,
   type AdminModelConfigItem,
   clearModelOverride,
+  getAdminCredentials,
   getModelConfig,
   type ModelOverride,
   type PrepOverride,
@@ -29,20 +31,27 @@ export const Route = createFileRoute('/models')({
     deps,
   }): Promise<{
     models: AdminModelConfigItem[];
+    credentials: AdminCredentialItem[];
     activeSite: (typeof MANAGED_SITES)[number] | null;
     error: string | null;
   }> => {
     const activeSite = MANAGED_SITES.find((s) => s.id === deps.siteId) || MANAGED_SITES[0];
-    if (!activeSite) return { models: [], activeSite: null, error: '未找到配置的站点' };
+    if (!activeSite) return { models: [], credentials: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const models = await getModelConfig({
-        data: { siteId: activeSite.id },
-      });
-      return { models, activeSite, error: null };
+      const [models, credentials] = await Promise.all([
+        getModelConfig({
+          data: { siteId: activeSite.id },
+        }),
+        getAdminCredentials({
+          data: { siteId: activeSite.id },
+        }).catch(() => []),
+      ]);
+      return { models, credentials, activeSite, error: null };
     } catch (err: unknown) {
       return {
         models: [],
+        credentials: [],
         activeSite,
         error: err instanceof Error ? err.message : '获取模型配置失败',
       };
@@ -69,6 +78,7 @@ interface ModelFormState {
   upstreamModel: string;
   maxCost: string;
   timeoutMinutes: number | '';
+  credentialId: string | null;
   prep?: {
     upstreamModel: string;
     maxCost: string;
@@ -176,6 +186,8 @@ function initFormState(model: AdminModelConfigItem): ModelFormState {
     upstreamModel: o?.upstreamModel ?? d.upstreamModel ?? '',
     maxCost: o?.maxCost ?? d.maxCost ?? '',
     timeoutMinutes: o?.timeoutMinutes ?? d.timeoutMinutes ?? '',
+    credentialId:
+      o?.credentialId !== undefined ? o.credentialId : (model.credentialId ?? d.credentialId ?? null),
     prep: hasPrep
       ? {
           upstreamModel: o?.prep?.upstreamModel ?? d.prep?.upstreamModel ?? '',
@@ -260,7 +272,19 @@ function computeDiff(
     });
   }
 
-  // 6. prep
+  // 6. credentialId
+  const defaultCredId = d.credentialId ?? null;
+  if (form.credentialId !== defaultCredId) {
+    override.credentialId = form.credentialId;
+    diffItems.push({
+      field: 'credentialId',
+      label: '上游凭据',
+      from: defaultCredId ? `凭据 (${defaultCredId})` : '跟随站点默认',
+      to: form.credentialId ? `凭据 (${form.credentialId})` : '跟随站点默认',
+    });
+  }
+
+  // 7. prep
   if (form.prep) {
     const diffPrep: PrepOverride = {};
     const defaultPrepUpstream = (d.prep?.upstreamModel ?? '').trim();
@@ -438,7 +462,7 @@ function computeDiff(
 }
 
 function ModelsPage() {
-  const { models, activeSite, error } = Route.useLoaderData();
+  const { models, credentials, activeSite, error } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const router = useRouter();
@@ -552,6 +576,7 @@ function ModelsPage() {
               key={`${activeModel.id}-v${activeModel.version}`}
               model={activeModel}
               siteId={activeSite?.id || ''}
+              credentials={credentials}
               onRefresh={() => router.invalidate()}
             />
           )}
@@ -564,10 +589,11 @@ function ModelsPage() {
 interface ModelEditorProps {
   model: AdminModelConfigItem;
   siteId: string;
+  credentials: AdminCredentialItem[];
   onRefresh: () => Promise<void>;
 }
 
-function ModelEditor({ model, siteId, onRefresh }: ModelEditorProps) {
+function ModelEditor({ model, siteId, credentials, onRefresh }: ModelEditorProps) {
   const [form, setForm] = useState<ModelFormState>(() => initFormState(model));
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState<{ isConflict: boolean; message: string } | null>(null);
@@ -932,6 +958,68 @@ function ModelEditor({ model, siteId, onRefresh }: ModelEditorProps) {
               </span>
               {model.override?.timeoutMinutes !== undefined && (
                 <span className="text-purple-400 font-mono">覆盖: {model.override.timeoutMinutes} 分钟</span>
+              )}
+            </div>
+          </div>
+
+          {/* 上游凭据 */}
+          <div>
+            <label
+              htmlFor="model-credential-select"
+              className="block text-xs font-medium text-slate-300 mb-1.5"
+            >
+              上游凭据 (credentialId)
+            </label>
+            <select
+              id="model-credential-select"
+              value={form.credentialId ?? ''}
+              disabled={submitting}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  credentialId: e.target.value === '' ? null : e.target.value,
+                }))
+              }
+              className="w-full bg-slate-950 border border-slate-700 text-sm text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 font-mono"
+            >
+              <option value="">跟随默认 (未指定)</option>
+              {credentials
+                .filter((c) => !c.archivedAt && (!model.upstream || c.upstream === model.upstream))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.upstream} · ••••{c.keyHint}
+                    {c.isDefault ? ' · 默认' : ''})
+                  </option>
+                ))}
+              {form.credentialId &&
+                !credentials.some(
+                  (c) =>
+                    !c.archivedAt &&
+                    (!model.upstream || c.upstream === model.upstream) &&
+                    c.id === form.credentialId,
+                ) && (
+                  <option value={form.credentialId}>
+                    {credentials.find((c) => c.id === form.credentialId)?.name ?? form.credentialId}{' '}
+                    (当前设定)
+                  </option>
+                )}
+            </select>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-slate-400">
+              <span>
+                代码默认:{' '}
+                {model.defaults.credentialId
+                  ? credentials.find((c) => c.id === model.defaults.credentialId)?.name ||
+                    model.defaults.credentialId
+                  : '跟随默认'}
+              </span>
+              {model.override?.credentialId !== undefined && (
+                <span className="text-purple-400 font-mono">
+                  当前覆盖:{' '}
+                  {model.override?.credentialId
+                    ? credentials.find((c) => c.id === model.override?.credentialId)?.name ||
+                      model.override?.credentialId
+                    : '跟随默认'}
+                </span>
               )}
             </div>
           </div>

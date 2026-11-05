@@ -9,6 +9,8 @@
 
 A [Yir API key](https://yir.ai/?utm_source=shipwords&utm_medium=docs) (`YIR_API_KEY`) is only needed for real generations; see the mock upstream below.
 
+To manage upstream URL / API keys through the admin dashboard, generate `CREDENTIALS_KEY` with `openssl rand -base64 32` and keep it in the site's external `.dev.vars`. Keys are AES-256-GCM encrypted in local D1; keep the master key stable or stored credentials become unreadable. The mock ignores credentials. Without a configured D1 credential, real generations continue using `YIR_API_KEY` / `YIR_BASE_URL`.
+
 ## Running a site
 
 ```bash

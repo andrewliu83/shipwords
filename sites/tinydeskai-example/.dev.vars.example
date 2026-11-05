@@ -15,6 +15,8 @@ RECAPTCHA_PROJECT_ID=
 RECAPTCHA_API_KEY=
 GUEST_COOKIE_SECRET=replace-with-32-random-bytes
 YIR_API_KEY=
+# Optional for admin-managed upstream keys encrypted in D1. Generate with openssl rand -base64 32; keep stable and outside the repo.
+CREDENTIALS_KEY=
 # Test flows for free: 1 = outputs replaced with the reference clips and compose takes the first segment; fail = every segment fails (to test refunds).
 # Only active when APP_URL is local or every payment key is in test mode.
 UPSTREAM_MOCK=1

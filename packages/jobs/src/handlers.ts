@@ -1,10 +1,12 @@
+import { AdminRequestError } from '@shipwords/core/admin';
 import { InsufficientCreditsError, spendCredits } from '@shipwords/core/credits/ledger';
 import { newId } from '@shipwords/core/db/client';
 import { clientIp, errorResponse, ipBucket, json, readJson } from '@shipwords/core/http';
 import { consumeQuota, dayWindow, releaseQuota } from '@shipwords/core/quota/counters';
 import { ensureGuestId, readGuestId } from '@shipwords/core/quota/guest';
 import type { Core } from '@shipwords/core/server';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { credentialAvailable, resolveCredential } from './credentials';
 import { imageSize } from './image-size';
 import {
   cancelQueued,
@@ -29,7 +31,7 @@ import {
 } from './models';
 import { r2Response } from './r2-range';
 import { type JobRow, jobs } from './schema';
-import { createAdapters, type JobsEnv } from './workflow';
+import { createAdapterFor, createAdapters, type JobsEnv } from './workflow';
 
 const MAX_PROMPT = 4000;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -38,6 +40,16 @@ const UPLOADS_PER_DAY = 40;
 /** Shorter side below this and models can't pick out a face or subject; a failed face swap still costs the upstream in full. */
 const MIN_UPLOAD_SIDE = 160;
 const RECAPTCHA_ACTION = 'generate';
+
+function invalidCredentialWrite(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; current && depth < 6; depth++) {
+    if (current instanceof Error && current.message.includes('NOT NULL constraint failed: jobs.upstream'))
+      return true;
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return false;
+}
 
 interface CreateBody {
   modelId?: string;
@@ -245,6 +257,24 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
       }
       if (existing) return resume(existing);
 
+      let credentialId: string | null;
+      try {
+        if (env().UPSTREAM_MOCK) {
+          createAdapters(env());
+          credentialId = null;
+        } else credentialId = await resolveCredential(core.db, model.upstream, model.credentialId);
+      } catch (error) {
+        if (error instanceof AdminRequestError)
+          return errorResponse(400, 'invalid_credential', error.message);
+        throw error;
+      }
+
+      // Deliberately fail the existing NOT NULL constraint when availability changed after resolution.
+      // A filtered insert alone would silently debit without creating a job; this aborts the entire D1 batch.
+      const guardedUpstream = credentialId
+        ? sql<string>`case when ${credentialAvailable(credentialId, model.upstream)} then ${model.upstream} else null end`
+        : model.upstream;
+
       if (user) {
         const cost = creditsFor(model, parameters);
         const row = {
@@ -255,8 +285,9 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
           prompt,
           inputJson,
           overrideJson,
+          credentialId,
           costCredits: cost,
-          upstream: model.upstream,
+          upstream: guardedUpstream,
         };
         try {
           // Charge and job creation share one batch: either both happen or neither does.
@@ -271,6 +302,7 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
             else await core.db.insert(jobs).values(row);
           }
         } catch (error) {
+          if (credentialId && invalidCredentialWrite(error)) return errorResponse(400, 'invalid_credential');
           if (error instanceof InsufficientCreditsError) {
             return errorResponse(402, 'insufficient_credits', 'Not enough credits.', {
               required: error.required,
@@ -292,9 +324,8 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
           decision.setCookie,
         );
       }
-      await core.db
-        .insert(jobs)
-        .values({
+      try {
+        await core.db.insert(jobs).values({
           id: jobId,
           guestId: decision.guestId,
           modelId: model.id,
@@ -302,15 +333,18 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
           prompt,
           inputJson,
           overrideJson,
+          credentialId,
           costCredits: 0,
           quotaJson: JSON.stringify(decision.rules),
-          upstream: model.upstream,
-        })
-        .catch(async (error) => {
-          // Quota was taken but the job wasn't created: give it back, or repeated failures would drain the daily guest budget.
-          await releaseQuota(core.db, decision.rules);
-          throw error;
+          upstream: guardedUpstream,
         });
+      } catch (error) {
+        // Quota was taken but the job wasn't created: give it back, or repeated failures would drain the daily guest budget.
+        await releaseQuota(core.db, decision.rules);
+        if (credentialId && invalidCredentialWrite(error))
+          return withCookie(errorResponse(400, 'invalid_credential'), decision.setCookie);
+        throw error;
+      }
       const job = (await loadJob(core.db, jobId))!;
       const failed = await dispatch(job);
       return withCookie(
@@ -345,9 +379,9 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
         // The Workflow is not terminated: it may be inside the first submit, the upstream already holding the task. Left running, it sees
         // the job canceled, cancels the task it just submitted and stops; a Workflow that hasn't started yet stops at its first step.
         // createAdapters throws when the mock is misconfigured; nothing real was submitted then, so there is nothing to cancel.
-        const adapter = (() => {
+        const adapter = await (async () => {
           try {
-            return createAdapters(env())[job.upstream];
+            return await createAdapterFor(core.db, env())(job);
           } catch {
             return undefined;
           }

@@ -40,6 +40,7 @@ Write each secret with `pnpm wrangler secret put <NAME>`; names are in `.dev.var
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: a Google Cloud OAuth client. Redirect URI `https://<domain>/api/auth/callback/google`; add the domain as an authorized JavaScript origin (One Tap needs it). Also register `http://localhost:<dev port>` for local testing. A consent screen with only basic scopes and no logo can be published without verification.
 - `RECAPTCHA_SITE_KEY` / `RECAPTCHA_PROJECT_ID` / `RECAPTCHA_API_KEY`: a score-based Google Cloud reCAPTCHA key restricted to the domain; restrict the API key to the reCAPTCHA Enterprise API.
 - `YIR_API_KEY`: from [yir.ai](https://yir.ai/?utm_source=shipwords&utm_medium=docs). One key per site makes per-site cost easy to see.
+- `CREDENTIALS_KEY`: optional until managing upstream credentials in the admin dashboard. Generate with `openssl rand -base64 32` and store as a Worker secret; it encrypts API keys in D1. Keep it stable and backed up: changing or losing it makes stored credentials unreadable. Without D1 credentials, `YIR_API_KEY` / `YIR_BASE_URL` remain the fallback. Preview and production share D1 credentials and must use the same master key.
 
 ## 5. Payments (confirm)
 
