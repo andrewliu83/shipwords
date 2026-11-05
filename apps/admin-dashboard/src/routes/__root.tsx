@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Link, Outlet, Scripts } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
+import appCss from '~/styles.css?url';
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,6 +16,7 @@ export const Route = createRootRoute({
         rel: 'stylesheet',
         href: 'https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
       },
+      { rel: 'stylesheet', href: appCss },
     ],
   }),
   shellComponent: Document,
@@ -26,14 +28,6 @@ function Document({ children }: { children: ReactNode }) {
     <html lang="zh-CN" className="h-full bg-slate-950 text-slate-100 font-sans">
       <head>
         <HeadContent />
-        <style dangerouslySetInnerHTML={{ __html: `
-          :root {
-            font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          }
-          code, pre {
-            font-family: 'JetBrains Mono', monospace;
-          }
-        `}} />
       </head>
       <body className="h-full flex flex-col antialiased">
         {children}

@@ -1,24 +1,57 @@
 import type { AdminUserListItem } from '@shipwords/core/admin';
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAdminUsers, grantCreditsRpc } from '~/lib/site-rpc';
-import { MANAGED_SITES } from '~/lib/sites';
+import { MANAGED_SITES, resolveSiteId } from '~/lib/sites';
 
 interface SearchParams {
   siteId?: string;
+  offset?: number;
+}
+
+const pageSize = 50;
+
+function parseOffset(value: unknown): number {
+  const offset = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
+  return Number.isSafeInteger(offset) && offset >= 0 && offset <= Number.MAX_SAFE_INTEGER - pageSize
+    ? offset : 0;
+}
+
+interface PendingGrant {
+  siteId: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  idemKey: string;
+}
+
+const pendingGrantStorageKey = 'admin-dashboard.pending-grant.v1';
+
+function readPendingGrant(): PendingGrant | null {
+  const stored = localStorage.getItem(pendingGrantStorageKey);
+  if (stored === null) return null;
+  const value = JSON.parse(stored) as PendingGrant;
+  if (!value || typeof value.siteId !== 'string' || typeof value.userId !== 'string' ||
+      !Number.isSafeInteger(value.amount) || value.amount <= 0 ||
+      typeof value.reason !== 'string' || !value.reason.trim() ||
+      typeof value.idemKey !== 'string' || !value.idemKey) {
+    throw new Error('无法读取未确认的补发记录，请先核对账本；为避免重复补发，已阻止新操作。');
+  }
+  return value;
 }
 
 export const Route = createFileRoute('/users')({
   validateSearch: (search: Record<string, unknown>): SearchParams => ({
-    siteId: (search.siteId as string) || MANAGED_SITES[0]?.id,
+    siteId: resolveSiteId(search.siteId),
+    offset: parseOffset(search.offset),
   }),
-  loaderDeps: ({ search }) => ({ siteId: search.siteId }),
+  loaderDeps: ({ search }) => ({ siteId: search.siteId, offset: search.offset ?? 0 }),
   loader: async ({ deps }) => {
     const activeSite = MANAGED_SITES.find((s) => s.id === deps.siteId) || MANAGED_SITES[0];
     if (!activeSite) return { users: [], activeSite: null, error: '未找到配置的站点' };
 
     try {
-      const users = await getAdminUsers();
+      const users = await getAdminUsers({ data: { siteId: activeSite.id, limit: pageSize, offset: deps.offset } });
       return { users, activeSite, error: null };
     } catch (err: unknown) {
       return {
@@ -35,41 +68,66 @@ function UsersPage() {
   const { users, activeSite, error } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  const offset = search.offset ?? 0;
 
   const [selectedUser, setSelectedUser] = useState<AdminUserListItem | null>(null);
   const [grantAmount, setGrantAmount] = useState<number>(100);
   const [grantReason, setGrantReason] = useState<string>('运营补偿');
   const [submitting, setSubmitting] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [pendingGrant, setPendingGrant] = useState<PendingGrant | null>(null);
+  const [storageReady, setStorageReady] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    try {
+      setPendingGrant(readPendingGrant());
+      setStorageReady(true);
+    } catch {
+      setStorageError('无法读取补发记录，请检查浏览器存储并核对账本；已阻止新操作。');
+    }
+  }, []);
+
+  const submitGrant = async (retry?: PendingGrant) => {
+    if (inFlight.current || !storageReady || storageError) return;
+    if (!retry && (!selectedUser || !activeSite)) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    setActionMsg(null);
+    try {
+      const existing = readPendingGrant();
+      if (existing && (!retry || retry.idemKey !== existing.idemKey)) {
+        setPendingGrant(existing);
+        throw new Error('存在结果未确认的补发，请先重试原操作确认结果，再发起新操作。');
+      }
+      const operation = existing ?? retry ?? {
+        siteId: activeSite!.id, userId: selectedUser!.id, amount: grantAmount,
+        reason: grantReason, idemKey: crypto.randomUUID(),
+      };
+      if (!Number.isSafeInteger(operation.amount) || operation.amount <= 0 || !operation.reason.trim()) {
+        throw new Error('请输入正安全整数积分数量和补发原因。');
+      }
+      // Persist the complete immutable request before any network call.
+      localStorage.setItem(pendingGrantStorageKey, JSON.stringify(operation));
+      setPendingGrant(operation);
+      const result = await grantCreditsRpc({ data: operation });
+      localStorage.removeItem(pendingGrantStorageKey);
+      setPendingGrant(null);
+      setActionMsg({ text: result.applied ? '补发成功，结果已确认。' : '原操作已处理，结果已确认，未重复补发积分。', ok: true });
+      setSelectedUser(null);
+      await navigate({ to: '/users', search: { siteId: operation.siteId } });
+    } catch (err: unknown) {
+      setActionMsg({ text: `${err instanceof Error ? err.message : '请求失败'} 请勿重新补发；若请求已发送，请使用原操作重试确认结果。`, ok: false });
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  };
 
   const handleGrant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !activeSite) return;
-    setSubmitting(true);
-    setActionMsg(null);
-
-    try {
-      await grantCreditsRpc({
-        data: {
-          siteId: activeSite.id,
-          userId: selectedUser.id,
-          amount: Number(grantAmount),
-        },
-      });
-      setActionMsg({ text: `成功向 ${selectedUser.email} 充值 ${grantAmount} 积分！`, ok: true });
-      setTimeout(() => {
-        setSelectedUser(null);
-        // 刷新页面
-        window.location.reload();
-      }, 1200);
-    } catch (err: unknown) {
-      setActionMsg({
-        text: err instanceof Error ? err.message : '充值失败',
-        ok: false,
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    await submitGrant(pendingGrant ?? undefined);
   };
 
   return (
@@ -86,7 +144,8 @@ function UsersPage() {
           <select
             id="site-select"
             value={search.siteId}
-            onChange={(e) => navigate({ search: { siteId: e.target.value } })}
+            disabled={submitting}
+            onChange={(e) => { setSelectedUser(null); navigate({ search: { siteId: e.target.value, offset: 0 } }); }}
             className="bg-slate-900 border border-slate-700 text-sm text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500"
           >
             {MANAGED_SITES.map((s) => (
@@ -101,6 +160,18 @@ function UsersPage() {
       {error && (
         <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-400 text-sm">
           {error}
+        </div>
+      )}
+
+      {storageError && <p role="alert">{storageError}</p>}
+      {actionMsg && <p role="status">{actionMsg.text}</p>}
+      {pendingGrant && (
+        <div role="alert">
+          <p>存在结果未确认的补发：站点 {pendingGrant.siteId}，用户 {pendingGrant.userId}，{pendingGrant.amount} 积分，原因：{pendingGrant.reason}。</p>
+          <p>刷新或关闭弹窗不会撤销请求。确认结果前不能更改参数或发起新补发；重试只确认原操作，不会重复发放。</p>
+          <button type="button" disabled={submitting || !!storageError} onClick={() => submitGrant(pendingGrant)}>
+            {submitting ? '确认中…' : '重试原操作并确认结果'}
+          </button>
         </div>
       )}
 
@@ -154,7 +225,8 @@ function UsersPage() {
                     <td className="py-3 px-4 text-right">
                       <button
                         type="button"
-                        onClick={() => setSelectedUser(u)}
+                        disabled={!storageReady || !!storageError || !!pendingGrant || submitting}
+                        onClick={() => { setSelectedUser(u); setActionMsg(null); }}
                         className="px-2.5 py-1 text-xs font-medium bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 rounded transition-colors"
                       >
                         补发积分
@@ -168,6 +240,24 @@ function UsersPage() {
         </div>
       </div>
 
+      <nav aria-label="用户列表分页" className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-400">
+        <span>第 {Math.floor(offset / pageSize) + 1} 页 · 每页 {pageSize} 条 · 本页 {users.length} 条</span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={offset === 0 || submitting}
+            onClick={() => { setSelectedUser(null); navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - pageSize) } }); }}
+            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          >上一页</button>
+          <button
+            type="button"
+            disabled={!!error || users.length < pageSize || submitting || offset > Number.MAX_SAFE_INTEGER - 2 * pageSize}
+            onClick={() => { setSelectedUser(null); navigate({ search: { siteId: search.siteId, offset: offset + pageSize } }); }}
+            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          >下一页</button>
+        </div>
+      </nav>
+
       {/* 充值积分模态弹窗 */}
       {selectedUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -176,6 +266,9 @@ function UsersPage() {
             <p className="text-xs text-slate-400 mt-1">
               向目标用户账号注入额度，此操作不可撤销，请谨慎操作。
             </p>
+            {pendingGrant && (
+              <p role="alert">原补发结果尚未确认，参数已锁定。关闭弹窗或刷新不会取消操作；请重试原操作确认结果，再修改参数发起下一笔补发。</p>
+            )}
 
             <form onSubmit={handleGrant} className="mt-4 space-y-4">
               <div>
@@ -193,7 +286,8 @@ function UsersPage() {
                   min="1"
                   required
                   value={grantAmount}
-                  onChange={(e) => setGrantAmount(Number(e.target.value))}
+                  disabled={submitting || !!pendingGrant}
+                  onChange={(e) => { setGrantAmount(Number(e.target.value)); setActionMsg(null); }}
                   className="mt-1 block w-full bg-slate-950 border border-slate-700 text-sm text-white rounded px-3 py-2 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -205,7 +299,8 @@ function UsersPage() {
                   type="text"
                   required
                   value={grantReason}
-                  onChange={(e) => setGrantReason(e.target.value)}
+                  disabled={submitting || !!pendingGrant}
+                  onChange={(e) => { setGrantReason(e.target.value); setActionMsg(null); }}
                   className="mt-1 block w-full bg-slate-950 border border-slate-700 text-sm text-white rounded px-3 py-2 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -226,17 +321,17 @@ function UsersPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedUser(null)}
-                  disabled={submitting}
+                  disabled={submitting || actionMsg?.ok}
                   className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded transition-colors"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !storageReady || !!storageError}
                   className="px-4 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded transition-colors disabled:opacity-50"
                 >
-                  {submitting ? '提交中...' : '确认充值'}
+                  {submitting ? '提交中...' : pendingGrant ? '重试原操作并确认结果' : '确认充值'}
                 </button>
               </div>
             </form>

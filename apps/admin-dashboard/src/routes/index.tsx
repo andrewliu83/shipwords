@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { MANAGED_SITES } from '~/lib/sites';
+import { getSiteStatus } from '~/lib/site-rpc';
 
 interface SiteStats {
   siteId: string;
@@ -10,12 +11,11 @@ interface SiteStats {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    // For now, return static status; full health check would need individual site RPCs
-    const stats: SiteStats[] = MANAGED_SITES.map((site) => ({
+    const stats: SiteStats[] = await Promise.all(MANAGED_SITES.map(async (site) => ({
       siteId: site.id,
       siteName: site.name,
-      status: 'online' as const,
-    }));
+      ...await getSiteStatus({ data: { siteId: site.id } }),
+    })));
     return { stats };
   },
   component: DashboardPage,

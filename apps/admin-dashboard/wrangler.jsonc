@@ -10,8 +10,7 @@
   "services": [
     {
       "binding": "TINYDESKAI",
-      "service": "tinydeskai-example",
-      "environment": "production"
+      "service": "tinydeskai-example"
     }
   ]
 }

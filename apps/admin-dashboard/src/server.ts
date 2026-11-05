@@ -32,7 +32,9 @@ function checkAuth(request: Request, expectedPassword?: string): Response | null
   try {
     const base64 = authHeader.slice(6);
     const decoded = atob(base64);
-    const [_, password] = decoded.split(':');
+    const separator = decoded.indexOf(':');
+    if (separator < 0) return new Response('Invalid Authorization header', { status: 400 });
+    const password = decoded.slice(separator + 1);
     if (password !== expectedPassword) {
       return new Response('Forbidden', { status: 403 });
     }

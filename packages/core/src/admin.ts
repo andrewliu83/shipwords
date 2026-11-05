@@ -1,8 +1,8 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { grantCredits } from './credits/ledger';
 import type { Db } from './db/client';
-import { creditAccounts, creditLedger, creditLots, orders, payments, quotaCounters, user, userAttribution } from './db/schema';
-import { errorResponse, json } from './http';
+import { creditAccounts, creditLedger, creditLots, payments, quotaCounters, user, userAttribution } from './db/schema';
+import { errorResponse } from './http';
 
 export interface AdminUserListItem {
   id: string;
@@ -53,12 +53,10 @@ export interface AdminQuotaItem {
 
 /**
  * 校验 Admin 请求身份
- * 支持：
- * 1. env.ADMIN_SECRET 匹配 Header `x-admin-secret`
- * 2. 或者直接放行（由外层 Worker 的 Service Bindings 保证只有 Admin Worker 能调用）
+ * Service Bindings do not make an HTTP route private. Always require a configured secret.
  */
 export function checkAdminAuth(request: Request, adminSecret?: string): Response | null {
-  if (!adminSecret) return null; // 未配置密钥时默认信任（Service Bindings 环境内）
+  if (!adminSecret?.trim()) return errorResponse(403, 'forbidden');
   const header = request.headers.get('x-admin-secret');
   if (header !== adminSecret) {
     return errorResponse(403, 'forbidden');
@@ -199,22 +197,50 @@ export async function getAdminQuota(db: Db, limit = 50, offset = 0): Promise<Adm
 /**
  * 手动为用户充值积分
  */
+export class AdminRequestError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
 export async function handleAdminGrantCredits(
   db: Db,
   params: {
     userId: string;
     amount: number;
     reason: string;
+    idemKey: string;
     adminId?: string;
   },
 ) {
-  if (params.amount <= 0) {
-    throw new Error('amount must be positive');
+  if (!Number.isSafeInteger(params.amount) || params.amount <= 0) {
+    throw new AdminRequestError(400, 'amount must be a positive safe integer');
   }
+  for (const [field, value, max] of [
+    ['userId', params.userId, 256],
+    ['reason', params.reason, 1000],
+    ['idemKey', params.idemKey, 128],
+  ] as const) {
+    if (typeof value !== 'string' || !value.trim() || value.length > max || value !== value.trim()) {
+      throw new AdminRequestError(400, `invalid ${field}`);
+    }
+  }
+  const target = await db.query.user.findFirst({ where: eq(user.id, params.userId) });
+  if (!target) throw new AdminRequestError(404, 'user not found');
 
-  const idemKey = `admin-grant:${params.userId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const idemKey = `admin-grant:${params.idemKey}`;
+  const checkReplay = async () => {
+    const existing = await db.query.creditLedger.findFirst({ where: eq(creditLedger.idemKey, idemKey) });
+    if (existing && (existing.userId !== params.userId || existing.kind !== 'grant' ||
+      existing.delta !== params.amount || existing.ref !== params.reason)) {
+      throw new AdminRequestError(409, 'idempotency key already used for a different grant');
+    }
+    return existing;
+  };
+  const existing = await checkReplay();
+  if (existing) return { applied: false, ledgerId: existing.id };
 
-  return grantCredits(db, {
+  const result = await grantCredits(db, {
     userId: params.userId,
     amount: params.amount,
     source: 'admin',
@@ -223,4 +249,7 @@ export async function handleAdminGrantCredits(
     // 管理员充值不过期
     expiresAt: null,
   });
+  // A concurrent request may have won after our initial read.
+  if (!result.applied) await checkReplay();
+  return result;
 }
