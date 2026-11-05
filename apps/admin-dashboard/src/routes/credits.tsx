@@ -11,7 +11,8 @@ interface SearchParams {
 function parseOffset(value: unknown): number {
   const offset = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
   return Number.isSafeInteger(offset) && offset >= 0 && offset <= Number.MAX_SAFE_INTEGER - ADMIN_PAGE_SIZE
-    ? offset : 0;
+    ? offset
+    : 0;
 }
 
 export const Route = createFileRoute('/credits')({
@@ -52,15 +53,33 @@ function CreditsPage() {
   const getKindBadge = (kind: string) => {
     switch (kind) {
       case 'grant':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">+ 发放</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            + 发放
+          </span>
+        );
       case 'spend':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">- 消费</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            - 消费
+          </span>
+        );
       case 'refund':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">↩ 退款</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            ↩ 退款
+          </span>
+        );
       case 'revoke':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">✕ 撤销</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            ✕ 撤销
+          </span>
+        );
       default:
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400">{kind}</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400">{kind}</span>
+        );
     }
   };
 
@@ -73,7 +92,9 @@ function CreditsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="credits-site-select" className="text-xs text-slate-400">选择站点:</label>
+          <label htmlFor="credits-site-select" className="text-xs text-slate-400">
+            选择站点:
+          </label>
           <select
             id="credits-site-select"
             value={search.siteId}
@@ -127,10 +148,11 @@ function CreditsPage() {
                         {item.delta > 0 ? `+${item.delta}` : item.delta}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-slate-400">
-                      {item.ref || '-'}
-                    </td>
-                    <td className="py-3 px-4 text-xs font-mono text-slate-500 max-w-[150px] truncate" title={item.idemKey}>
+                    <td className="py-3 px-4 text-xs text-slate-400">{item.ref || '-'}</td>
+                    <td
+                      className="py-3 px-4 text-xs font-mono text-slate-500 max-w-[150px] truncate"
+                      title={item.idemKey}
+                    >
                       {item.idemKey}
                     </td>
                     <td className="py-3 px-4 text-xs text-slate-400 font-mono text-right whitespace-nowrap">
@@ -145,21 +167,30 @@ function CreditsPage() {
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800 bg-slate-900/60 text-sm text-slate-400">
           <div className="text-xs">
-            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页 · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {ledger.length} 条
+            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页
+            · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {ledger.length} 条
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={offset === 0}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })}
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               上一页
             </button>
             <button
               type="button"
-              disabled={!!error || ledger.length < ADMIN_PAGE_SIZE || offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })}
+              disabled={
+                !!error ||
+                ledger.length < ADMIN_PAGE_SIZE ||
+                offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE
+              }
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               下一页

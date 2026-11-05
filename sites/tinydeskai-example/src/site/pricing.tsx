@@ -1,17 +1,39 @@
 import { useCheckout } from '@shipwords/core/react/account';
 import type { Product } from '@shipwords/core/site';
 import { getRouteApi, Link } from '@tanstack/react-router';
-import { type MouseEvent, type ReactNode, useEffect, useRef } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { authClient } from '~/lib/auth';
+import { getModelPrices } from '~/lib/model-prices';
 import { track } from '~/lib/track';
 import { m } from '~/paraglide/messages.js';
 import { openSignIn } from '~/site/sign-in';
 import site from '../../site.config';
 
 // Pricing has no page of its own: the home page #pricing section checks out directly, other entry points (nav, low credits, account, guides) open a dialog,
-// so the visitor stays on the page with the stage photos intact. Each video is 10 credits; unit prices derive from credits, so change prices only in site.config.ts.
+// so the visitor stays on the page with the stage photos intact. Unit prices combine the live model credit cost with the site's credit packs.
 
-const CREDITS_PER_VIDEO = 10;
+export function useModelPrice() {
+  const [price, setPrice] = useState<{ id: string; credits: number; enabled: boolean } | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      void getModelPrices()
+        .then((prices) => {
+          if (active) setPrice(prices.find((model) => model.id === 'tiny-desk') ?? null);
+        })
+        .catch(() => {
+          if (active) setPrice(null);
+        });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+  return price;
+}
 const OPEN_EVENT = 'tinydesk:pricing';
 /** Checkout return and cancel both land here; tool.tsx sees resume, scrolls to the generator and says the stage is intact. */
 const RESUME_PATH = '/?resume=1#make';
@@ -29,10 +51,9 @@ export function formatPrice(product: Product) {
   return product.kind === 'subscription' ? `${amount}/${product.interval}` : amount;
 }
 
-export function perVideo(product: (typeof site.products)[number]) {
-  const videos = product.credits / CREDITS_PER_VIDEO;
+export function perVideo(product: (typeof site.products)[number], credits: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: product.price.currency }).format(
-    product.price.amount / 100 / videos,
+    ((product.price.amount / 100) * credits) / product.credits,
   );
 }
 
@@ -85,7 +106,7 @@ export const packName = (product: (typeof site.products)[number]) =>
 /** Savings per video versus the single pack, from unit price, rounded to a percent. */
 function savings(product: (typeof site.products)[number]) {
   const base = site.products[0];
-  const unit = (p: typeof product) => p.price.amount / (p.credits / CREDITS_PER_VIDEO);
+  const unit = (p: typeof product) => p.price.amount / p.credits;
   return Math.round((1 - unit(product) / unit(base)) * 100);
 }
 
@@ -103,6 +124,7 @@ export function Plans({
   const config = root.useLoaderData();
   const session = authClient(config.googleClientId).useSession();
   const { checkout, pending, error } = useCheckout();
+  const modelPrice = useModelPrice();
 
   function buy(productId: string) {
     // After paying, return to the generator; stage photos restore from sessionStorage (tool.tsx).
@@ -118,6 +140,7 @@ export function Plans({
     if (error) track('checkout_failed', { error: error.slice(0, 100) });
   }, [error]);
 
+  if (!modelPrice?.enabled) return null;
   return (
     <>
       <div className="plans">
@@ -130,7 +153,9 @@ export function Plans({
               <Heading>{packName(product)}</Heading>
               <p className="price">{formatPrice(product)}</p>
               <p className="plan-unit">
-                <span className="mono">{m.common_plan_per_video({ price: perVideo(product) })}</span>
+                <span className="mono">
+                  {m.common_plan_per_video({ price: perVideo(product, modelPrice.credits) })}
+                </span>
                 {save > 0 && <span className="plan-save">{m.common_plan_save({ percent: save })}</span>}
               </p>
               {!compact && (

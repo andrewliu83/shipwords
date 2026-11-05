@@ -1,4 +1,5 @@
 ---
+
 id: task-admin-dashboard
 type: task-spec
 title: 统一管理界面（Admin Dashboard）
@@ -21,19 +22,19 @@ parent: sites
 
 ### 决策 A：管理界面的部署位置
 
-| 方案 | 说明 | 优 | 劣 |
-|---|---|---|---|
-| **A1 嵌入每个站点** | 在每个 site 内加 `/admin/*` 路由 | 直接访问本站 D1，无需额外 Worker | 无跨站视图；每新建一个站点都要重复 |
-| **A2 独立 sidecar app** | 新建 `apps/admin/`，部署为独立 Worker | 可聚合多站点数据；单点维护 | 跨 D1 访问需通过 Service Bindings；比较复杂 |
-| **A3 本地/开发者工具** | CLI/脚本 + 本地 wrangler dev 查看 | 零生产风险；已有 D1 数据直接查 | 非实时、非 Web UI |
+| 方案                    | 说明                                  | 优                               | 劣                                          |
+| ----------------------- | ------------------------------------- | -------------------------------- | ------------------------------------------- |
+| **A1 嵌入每个站点**     | 在每个 site 内加 `/admin/*` 路由      | 直接访问本站 D1，无需额外 Worker | 无跨站视图；每新建一个站点都要重复          |
+| **A2 独立 sidecar app** | 新建 `apps/admin/`，部署为独立 Worker | 可聚合多站点数据；单点维护       | 跨 D1 访问需通过 Service Bindings；比较复杂 |
+| **A3 本地/开发者工具**  | CLI/脚本 + 本地 wrangler dev 查看     | 零生产风险；已有 D1 数据直接查   | 非实时、非 Web UI                           |
 
 ### 决策 B：认证方式
 
-| 方案 | 说明 |
-|---|---|
+| 方案                                       | 说明                                                |
+| ------------------------------------------ | --------------------------------------------------- |
 | **B1 复用 Better Auth + 管理员邮箱白名单** | 在 site.config.ts 中配置 adminEmails，server 端检查 |
-| **B2 Cloudflare Access** | 在 Worker 前加 CF Zero Trust，无需代码内鉴权 |
-| **B3 独立密码/token** | env secret 中配置 ADMIN_TOKEN，HTTP Basic Auth |
+| **B2 Cloudflare Access**                   | 在 Worker 前加 CF Zero Trust，无需代码内鉴权        |
+| **B3 独立密码/token**                      | env secret 中配置 ADMIN_TOKEN，HTTP Basic Auth      |
 
 ### 决策 C：功能范围（MVP）
 

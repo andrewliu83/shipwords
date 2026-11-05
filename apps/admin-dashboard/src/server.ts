@@ -22,7 +22,7 @@ function checkAuth(request: Request, expectedPassword?: string): Response | null
   }
 
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
+  if (!authHeader?.startsWith('Basic ')) {
     return new Response('Unauthorized', {
       status: 401,
       headers: { 'WWW-Authenticate': 'Basic realm="Admin Dashboard"' },

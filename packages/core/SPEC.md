@@ -1,4 +1,5 @@
 ---
+
 id: pkg-core
 type: module-design
 title: packages/core — 共享核心包

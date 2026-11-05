@@ -1,6 +1,6 @@
-import { desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '@shipwords/core/db/client';
 import { user } from '@shipwords/core/db/schema';
+import { desc, eq, sql } from 'drizzle-orm';
 import { jobs } from './schema';
 
 export interface AdminJobItem {

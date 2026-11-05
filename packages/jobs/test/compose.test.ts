@@ -324,7 +324,7 @@ describe('repair args', () => {
 describe('repair planning', () => {
   const repair = {
     upstreamModel: 'm',
-    prompt: () => '',
+    prompt: { template: '', vars: () => ({}) },
     parameters: {},
     maxCost: '0.1',
     rounds: 3,

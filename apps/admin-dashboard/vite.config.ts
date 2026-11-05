@@ -13,10 +13,5 @@ export default defineConfig({
   },
   server: { host: '[IP]', port: 5180, strictPort: true },
   preview: { host: '[IP]', strictPort: true },
-  plugins: [
-    cloudflare({ viteEnvironment: { name: 'ssr' } }),
-    tailwindcss(),
-    tanstackStart(),
-    viteReact(),
-  ],
+  plugins: [cloudflare({ viteEnvironment: { name: 'ssr' } }), tailwindcss(), tanstackStart(), viteReact()],
 });

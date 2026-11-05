@@ -31,7 +31,7 @@ const FACE_OCCLUSION = false;
  * The animal sentence and "no lead singer or new character in the band shots" come from the tested dog run: without them a second lead appears and hands stay human.
  * A mix of people and dogs in one job is untested.
  */
-function editPrompt(images: Readonly<Record<string, string>>) {
+function editVars(images: Readonly<Record<string, string>>) {
   const filled = (Object.keys(WHO) as Seat[]).filter((seat) => images[seat]);
   const swaps = filled.map(
     (seat) =>
@@ -39,19 +39,21 @@ function editPrompt(images: Readonly<Record<string, string>>) {
   );
   const others =
     filled.length < Object.keys(WHO).length ? ' Everyone else stays exactly as in @video_1.' : '';
-  return [
-    'Edit @video_1.',
-    ...swaps,
-    'The lead singer appears only in the close-up shot; the wide band shots show only the keyboard player and the two backing singers, so do not add the lead singer or any other new character to them.',
-    "A performer replaced with a dog or another animal becomes that animal completely, with its fur, face and paws; every visible hand of that performer, including raised hands, clapping hands, hands on the keyboard and hands partly outside the frame edges, becomes the animal's furry paws with no human fingers or skin.",
-    FACE_OCCLUSION
-      ? 'Each reference photo is a three-view strip whose panels each have part of the face covered by a grey box; reconstruct the complete, symmetric, natural facial features of each replaced performer from the three panels, keeping the face exactly consistent with the photo, hyper-realistic skin texture, and stable and consistent across frames with no flicker.'
-      : 'Keep the facial features of each replaced performer exactly consistent with their reference photo, with natural skin texture and stable and consistent features across frames with no flicker.',
-    `Each replaced performer keeps the original person's position, pose, head direction, gestures, facial expressions and mouth movements frame by frame, and wears the clothes from their own photo.${others}`,
-    'Keep everything else unchanged: the room, the shelves, the instruments, the microphones, the camera cuts, the camera movement, the lighting, the timing and the video duration.',
-    'Keep the audio exactly identical to the original video. Do not add any new sounds.',
-  ].join(' ');
+  return { swaps: swaps.join(' '), others };
 }
+
+const editTemplate = [
+  'Edit @video_1.',
+  '{{swaps}}',
+  'The lead singer appears only in the close-up shot; the wide band shots show only the keyboard player and the two backing singers, so do not add the lead singer or any other new character to them.',
+  "A performer replaced with a dog or another animal becomes that animal completely, with its fur, face and paws; every visible hand of that performer, including raised hands, clapping hands, hands on the keyboard and hands partly outside the frame edges, becomes the animal's furry paws with no human fingers or skin.",
+  FACE_OCCLUSION
+    ? 'Each reference photo is a three-view strip whose panels each have part of the face covered by a grey box; reconstruct the complete, symmetric, natural facial features of each replaced performer from the three panels, keeping the face exactly consistent with the photo, hyper-realistic skin texture, and stable and consistent across frames with no flicker.'
+    : 'Keep the facial features of each replaced performer exactly consistent with their reference photo, with natural skin texture and stable and consistent features across frames with no flicker.',
+  "Each replaced performer keeps the original person's position, pose, head direction, gestures, facial expressions and mouth movements frame by frame, and wears the clothes from their own photo.{{others}}",
+  'Keep everything else unchanged: the room, the shelves, the instruments, the microphones, the camera cuts, the camera movement, the lighting, the timing and the video duration.',
+  'Keep the audio exactly identical to the original video. Do not add any new sounds.',
+].join(' ');
 
 /** How each seat is named in the repair (Pruna p-video-replace) prompt: by position, since a swapped person no longer wears the original's clothes. */
 const SPOT: Record<Seat, string> = {
@@ -63,13 +65,16 @@ const SPOT: Record<Seat, string> = {
 };
 
 /** Wording from the tested repair runs: with several people, say who each image is, then keep position, motion and mouth movements. */
-function repairPrompt(slots: readonly string[]) {
+function repairVars(slots: readonly string[]) {
   const keep =
     'face, hair and clothes. Keep the position, pose, gestures, head direction and mouth movements. Do not change anyone else.';
   if (slots.length === 1)
-    return `Replace ${SPOT[slots[0] as Seat]} with the person or animal in the image: ${keep}`;
+    return { targets: `Replace ${SPOT[slots[0] as Seat]} with the person or animal in the image:`, keep };
   const images = slots.map((slot, i) => `image ${i + 1} is ${SPOT[slot as Seat]}`).join('; ');
-  return `In order, ${images}. Replace each of these people with the person or animal in their image: ${keep}`;
+  return {
+    targets: `In order, ${images}. Replace each of these people with the person or animal in their image:`,
+    keep,
+  };
 }
 
 const CLIP = 'assets/tinydesk/full-17s.mp4';
@@ -112,7 +117,7 @@ export default serverModels(catalog, {
           id: 'full',
           referenceVideo: CLIP,
           slots: ['lead', 'sax', 'keys', 'backLeft', 'backRight'],
-          prompt: editPrompt,
+          prompt: { template: editTemplate, vars: editVars, required: ['swaps', 'others'] },
           // duration must be a whole number: the 17.688 s reference asks for 18 s, which comes back as 18.04 s with each cut 1–3 frames late; compose re-aligns shot by shot.
           // generate_audio can only be on with Yir; compose swaps the original song back in.
           parameters: { duration: 18, resolution: '720p', aspect_ratio: 'auto' },
@@ -138,7 +143,7 @@ export default serverModels(catalog, {
           // (both tested jobs recovered; about 8 s and $0.25 per round). The lead and sax close-ups have never missed; they are configured just in case.
           repair: {
             upstreamModel: 'pruna/p-video-replace',
-            prompt: repairPrompt,
+            prompt: { template: '{{targets}} {{keep}}', vars: repairVars, required: ['targets', 'keep'] },
             parameters: { resolution: '720p' },
             maxCost: '0.40',
             rounds: 5,

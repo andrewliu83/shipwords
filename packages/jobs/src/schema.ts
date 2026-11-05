@@ -18,6 +18,7 @@ export const jobs = sqliteTable(
     kind: text('kind', { enum: ['image', 'video', 'music'] }).notNull(),
     prompt: text('prompt').notNull(),
     inputJson: text('input_json').notNull(),
+    overrideJson: text('override_json'),
     costCredits: integer('cost_credits').notNull().default(0),
     /** Guest quota counting rule, used to return quota on failure. */
     quotaJson: text('quota_json'),
@@ -46,3 +47,10 @@ export const jobs = sqliteTable(
 export type JobRow = typeof jobs.$inferSelect;
 export type JobStatus = JobRow['status'];
 export const TERMINAL: readonly JobStatus[] = ['succeeded', 'failed', 'canceled'];
+
+export const modelOverrides = sqliteTable('model_overrides', {
+  modelId: text('model_id').primaryKey(),
+  overrideJson: text('override_json').notNull(),
+  version: integer('version').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});

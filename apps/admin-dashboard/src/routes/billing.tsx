@@ -11,7 +11,8 @@ interface SearchParams {
 function parseOffset(value: unknown): number {
   const offset = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
   return Number.isSafeInteger(offset) && offset >= 0 && offset <= Number.MAX_SAFE_INTEGER - ADMIN_PAGE_SIZE
-    ? offset : 0;
+    ? offset
+    : 0;
 }
 
 export const Route = createFileRoute('/billing')({
@@ -25,7 +26,8 @@ export const Route = createFileRoute('/billing')({
   }),
   loader: async ({ deps }) => {
     const activeSite = MANAGED_SITES.find((s) => s.id === deps.siteId) || MANAGED_SITES[0];
-    if (!activeSite) return { payments: [], activeSite: null, error: '未找到配置的站点', offset: deps.offset };
+    if (!activeSite)
+      return { payments: [], activeSite: null, error: '未找到配置的站点', offset: deps.offset };
 
     try {
       const payments = await getAdminPayments({
@@ -58,7 +60,9 @@ function BillingPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="billing-site-select" className="text-xs text-slate-400">选择站点:</label>
+          <label htmlFor="billing-site-select" className="text-xs text-slate-400">
+            选择站点:
+          </label>
           <select
             id="billing-site-select"
             value={search.siteId}
@@ -111,7 +115,10 @@ function BillingPage() {
                         {p.provider}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-xs font-mono text-slate-400 max-w-[150px] truncate" title={p.paymentRef}>
+                    <td
+                      className="py-3 px-4 text-xs font-mono text-slate-400 max-w-[150px] truncate"
+                      title={p.paymentRef}
+                    >
                       {p.paymentRef}
                     </td>
                     <td className="py-3 px-4 font-mono font-medium text-white">
@@ -122,9 +129,7 @@ function BillingPage() {
                         </div>
                       )}
                     </td>
-                    <td className="py-3 px-4 font-mono text-indigo-400">
-                      +{p.creditsGranted}
-                    </td>
+                    <td className="py-3 px-4 font-mono text-indigo-400">+{p.creditsGranted}</td>
                     <td className="py-3 px-4 text-xs text-slate-400 font-mono text-right whitespace-nowrap">
                       {new Date(p.createdAt).toLocaleString('zh-CN')}
                     </td>
@@ -137,21 +142,30 @@ function BillingPage() {
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800 bg-slate-900/60 text-sm text-slate-400">
           <div className="text-xs">
-            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页 · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {payments.length} 条
+            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页
+            · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {payments.length} 条
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={offset === 0}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })}
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               上一页
             </button>
             <button
               type="button"
-              disabled={!!error || payments.length < ADMIN_PAGE_SIZE || offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })}
+              disabled={
+                !!error ||
+                payments.length < ADMIN_PAGE_SIZE ||
+                offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE
+              }
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               下一页

@@ -21,7 +21,7 @@ import { identify, track } from '~/lib/track';
 import { m } from '~/paraglide/messages.js';
 import { openAccount } from '~/site/account';
 import { PhoneHandoff } from '~/site/phone-upload';
-import { formatPrice, openPricing, PricingLink } from '~/site/pricing';
+import { openPricing, PricingLink, perVideo, useModelPrice } from '~/site/pricing';
 import { openSignIn } from '~/site/sign-in';
 import site from '../../site.config';
 import models from '../../site.models';
@@ -32,8 +32,6 @@ import models from '../../site.models';
 
 const MODEL = models[0];
 const SLOTS = MODEL.effect.slots;
-const PRODUCT = site.products.find((p) => p.kind === 'credits' && p.credits === MODEL.credits);
-const PRICE = PRODUCT ? formatPrice(PRODUCT) : '';
 
 /**
  * The stage image public/media/stage.jpg is three frames of the viral clip (left: band at 16.8 s, top right: lead at 9.8 s, bottom right: sax at 14.9 s), 1020×960.
@@ -119,6 +117,8 @@ export function TinyDeskTool({
   stage?: 'viral' | 'ours' | 'dogs';
 }) {
   const config = root.useLoaderData();
+  const modelPrice = useModelPrice();
+  const PRICE = modelPrice ? perVideo(site.products[0], modelPrice.credits) : '';
   const auth = authClient(config.googleClientId);
   const session = auth.useSession();
   const { jobs, generate, submitting, error } = generation;
@@ -412,6 +412,7 @@ export function TinyDeskTool({
     await start();
   }
 
+  if (!modelPrice?.enabled) return null;
   return (
     <form className="tool" onSubmit={onSubmit}>
       <div className="presets">

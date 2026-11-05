@@ -2,7 +2,7 @@ import { pageHead } from '@shipwords/core/seo';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { m } from '~/paraglide/messages.js';
 import { Faq, type FaqItem, faqJsonLd, GuidePage } from '~/site/guide';
-import { formatPrice, packName, perVideo } from '~/site/pricing';
+import { formatPrice, packName, perVideo, useModelPrice } from '~/site/pricing';
 import site from '../../site.config';
 
 // Free and comparison page: targets "tiny desk ai free", "free online" and "best tiny desk ai generator".
@@ -138,6 +138,7 @@ export const Route = createFileRoute('/tiny-desk-ai-free')({
 });
 
 function FreePage() {
+  const modelPrice = useModelPrice();
   const checked = m.guides_free_checked();
   return (
     <GuidePage
@@ -177,24 +178,30 @@ function FreePage() {
             </tr>
           </thead>
           <tbody>
-            {generators().map((g) => (
-              <tr key={g.name}>
-                <td>
-                  {g.url ? (
-                    <a href={g.url} rel="nofollow noopener" target="_blank">
-                      {g.name}
-                    </a>
-                  ) : (
-                    <strong>{g.name}</strong>
-                  )}
-                </td>
-                <td className="mono">{g.price}</td>
-                <td>{g.people}</td>
-                <td className="mono">{g.length}</td>
-                <td>{g.quality}</td>
-                <td>{g.sound}</td>
-              </tr>
-            ))}
+            {generators()
+              .filter((g) => g.name !== site.name || modelPrice?.enabled)
+              .map((g) => (
+                <tr key={g.name}>
+                  <td>
+                    {g.url ? (
+                      <a href={g.url} rel="nofollow noopener" target="_blank">
+                        {g.name}
+                      </a>
+                    ) : (
+                      <strong>{g.name}</strong>
+                    )}
+                  </td>
+                  <td className="mono">
+                    {g.name === site.name && modelPrice
+                      ? perVideo(site.products[0], modelPrice.credits)
+                      : g.price}
+                  </td>
+                  <td>{g.people}</td>
+                  <td className="mono">{g.length}</td>
+                  <td>{g.quality}</td>
+                  <td>{g.sound}</td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -204,14 +211,23 @@ function FreePage() {
         <li>{m.guides_free_pick_free()}</li>
         <li>{m.guides_free_pick_hd()}</li>
         <li>{m.guides_free_pick_cheap()}</li>
-        <li>{m.guides_free_pick_group({ site: site.name, price: formatPrice(site.products[0]) })}</li>
-        <li>
-          {m.guides_free_pick_packs({
-            site: site.name,
-            price3: perVideo(site.products[1]),
-            price10: perVideo(site.products[2]),
-          })}
-        </li>
+        {modelPrice?.enabled && (
+          <li>
+            {m.guides_free_pick_group({
+              site: site.name,
+              price: perVideo(site.products[0], modelPrice.credits),
+            })}
+          </li>
+        )}
+        {modelPrice?.enabled && (
+          <li>
+            {m.guides_free_pick_packs({
+              site: site.name,
+              price3: perVideo(site.products[1], modelPrice.credits),
+              price10: perVideo(site.products[2], modelPrice.credits),
+            })}
+          </li>
+        )}
       </ul>
       <p>
         {m.guides_free_pricing_before()}

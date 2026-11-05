@@ -1,4 +1,5 @@
 ---
+
 id: goal
 type: goal-and-requirements
 title: "shipwords: 关键词AI站点fleet框架"

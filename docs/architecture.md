@@ -1,4 +1,5 @@
 ---
+
 id: architecture
 type: architecture-design
 title: "shipwords 架构"

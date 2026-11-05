@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { definePublicModels, type EffectSlot, serverModels } from '../src/models';
+import { definePublicModels, type EffectSlot, renderPrompt, serverModels } from '../src/models';
 
 const catalog = definePublicModels([
   {
@@ -27,7 +27,10 @@ const segment = {
   id: 'full',
   referenceVideo: 'assets/demo/full.mp4',
   slots: ['a'],
-  prompt: (images: Readonly<Record<string, string>>) => `Swap in ${images.a}`,
+  prompt: {
+    template: 'Swap in {{a}}',
+    vars: (images: Readonly<Record<string, string>>) => ({ a: images.a! }),
+  },
   parameters: {},
   maxCost: '1.00',
 };
@@ -49,7 +52,7 @@ describe('public and server model files', () => {
     expect(image).toMatchObject({ id: 'image', credits: 5, upstreamModel: 'vendor/image' });
     expect(image?.effect).toBeUndefined();
     expect(effect?.effect?.slots).toEqual([{ id: 'a', label: 'A', required: true }]);
-    expect(effect?.effect?.segments[0]?.prompt({ a: '@image1' })).toBe('Swap in @image1');
+    expect(renderPrompt(effect!.effect!.segments[0]!.prompt, { a: '@image1' })).toBe('Swap in @image1');
   });
 
   it('rejects server fields in site.models.ts', () => {

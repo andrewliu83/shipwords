@@ -11,7 +11,8 @@ interface SearchParams {
 function parseOffset(value: unknown): number {
   const offset = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
   return Number.isSafeInteger(offset) && offset >= 0 && offset <= Number.MAX_SAFE_INTEGER - ADMIN_PAGE_SIZE
-    ? offset : 0;
+    ? offset
+    : 0;
 }
 
 export const Route = createFileRoute('/jobs')({
@@ -52,17 +53,39 @@ function JobsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'succeeded':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">● 成功</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            ● 成功
+          </span>
+        );
       case 'submitted':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">◌ 执行中</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            ◌ 执行中
+          </span>
+        );
       case 'queued':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">⋯ 排队中</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            ⋯ 排队中
+          </span>
+        );
       case 'failed':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">✕ 失败</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            ✕ 失败
+          </span>
+        );
       case 'canceled':
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700">⊘ 取消</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400 border border-slate-700">
+            ⊘ 取消
+          </span>
+        );
       default:
-        return <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400">{status}</span>;
+        return (
+          <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-400">{status}</span>
+        );
     }
   };
 
@@ -75,7 +98,9 @@ function JobsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="jobs-site-select" className="text-xs text-slate-400">选择站点:</label>
+          <label htmlFor="jobs-site-select" className="text-xs text-slate-400">
+            选择站点:
+          </label>
           <select
             id="jobs-site-select"
             value={search.siteId}
@@ -122,7 +147,10 @@ function JobsPage() {
                   <tr key={job.id} className="hover:bg-slate-850/30 transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-mono text-xs text-slate-400">{job.id}</div>
-                      <div className="text-xs text-slate-300 truncate max-w-[200px] mt-0.5" title={job.prompt}>
+                      <div
+                        className="text-xs text-slate-300 truncate max-w-[200px] mt-0.5"
+                        title={job.prompt}
+                      >
                         {job.prompt}
                       </div>
                       {job.errorMessage && (
@@ -161,21 +189,30 @@ function JobsPage() {
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800 bg-slate-900/60 text-sm text-slate-400">
           <div className="text-xs">
-            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页 · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {jobs.length} 条
+            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页
+            · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {jobs.length} 条
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={offset === 0}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })}
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               上一页
             </button>
             <button
               type="button"
-              disabled={!!error || jobs.length < ADMIN_PAGE_SIZE || offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })}
+              disabled={
+                !!error ||
+                jobs.length < ADMIN_PAGE_SIZE ||
+                offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE
+              }
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               下一页

@@ -28,9 +28,13 @@ describe('admin security', () => {
       await expect(handleAdminGrantCredits(db, { ...input, amount })).rejects.toMatchObject({ status: 400 });
     }
     for (const field of ['userId', 'reason', 'idemKey'] as const) {
-      await expect(handleAdminGrantCredits(db, { ...input, [field]: ' ' })).rejects.toMatchObject({ status: 400 });
+      await expect(handleAdminGrantCredits(db, { ...input, [field]: ' ' })).rejects.toMatchObject({
+        status: 400,
+      });
     }
-    await expect(handleAdminGrantCredits(db, { ...input, userId: 'missing' })).rejects.toMatchObject({ status: 404 });
+    await expect(handleAdminGrantCredits(db, { ...input, userId: 'missing' })).rejects.toMatchObject({
+      status: 404,
+    });
     expect((await getBalance(db, input.userId)).available).toBe(0);
   });
 
@@ -47,7 +51,9 @@ describe('admin security', () => {
     await handleAdminGrantCredits(db, input);
     const other = await grantInput();
     for (const change of [{ amount: 26 }, { reason: 'different' }, { userId: other.userId }]) {
-      await expect(handleAdminGrantCredits(db, { ...input, ...change })).rejects.toMatchObject({ status: 409 });
+      await expect(handleAdminGrantCredits(db, { ...input, ...change })).rejects.toMatchObject({
+        status: 409,
+      });
     }
     expect((await getBalance(db, input.userId)).available).toBe(25);
     expect((await getBalance(db, other.userId)).available).toBe(0);

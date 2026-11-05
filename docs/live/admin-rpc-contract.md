@@ -5,3 +5,9 @@
 查询请求使用 `{ action, params }`，可选分页参数 `limit` 为 1–200 的整数，`offset` 为非负安全整数。返回对象分别包含 `users`、`ledger`、`jobs`、`payments` 或 `quota` 数组。
 
 `grantCredits` 的 `params` 必须包含 `userId`、`amount`、`reason` 和 `idemKey`。金额必须为正安全整数；字符串不能为空或带首尾空格，长度分别不超过 256、1000 和 128 字符。对同一操作的重试须沿用相同幂等键和参数；重复请求返回 `result.applied: false`，同键不同参数返回 409。成功响应为 `{ success: true, result: { applied, ledgerId } }`。
+
+模型配置动作遵守 [model-overrides.md](model-overrides.md) §5：
+
+- `getModelConfig` 无参数，返回 `{ models: [{ id, name, kind, defaults, override, version, placeholders: { segments: { [segmentId]: { prompt: string[], repair?: string[] } } }, creditsEditable }] }`。defaults 包含代码默认的可覆盖字段及模板，override 为当前覆盖或 null。
+- `setModelOverride` 接受 `{ modelId, override, expectedVersion }`，返回 `{ version }`。初次写入 expectedVersion 为 0；校验失败返回 400（error 为可读原因），未知模型 404，版本冲突 409。
+- `clearModelOverride` 接受 `{ modelId, expectedVersion }`，返回 `{ version }`。清除恢复代码默认，保留递增版本防止旧写入覆盖；版本冲突 409，未知模型 404。

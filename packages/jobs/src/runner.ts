@@ -12,7 +12,8 @@ import {
   settleFailure,
   upstreamIds,
 } from './lifecycle';
-import { type FacePoint, type JobPart, type ModelDefinition, PREP_REF } from './models';
+import { modelForJob } from './model-overrides';
+import { type FacePoint, type JobPart, type ModelDefinition, PREP_REF, renderPrompt } from './models';
 import { nextRepairPass, type RepairPass, shotFrames } from './repair';
 import { type JobRow, TERMINAL } from './schema';
 import type { OutputFile, PollResult, SubmitInput, UpstreamAdapter } from './upstream';
@@ -87,6 +88,21 @@ export async function storeOutputs(
  */
 export async function runGeneration(deps: RunnerDeps, jobId: string, step: StepRunner): Promise<void> {
   try {
+    // A transient read failure retries inside this step; once retries are exhausted it takes the same fallback as every other step.
+    const snapshot = await step.do('model-snapshot', async () => {
+      const job = await loadJob(deps.db, jobId);
+      if (!job) return null;
+      const stored = { modelId: job.modelId, overrideJson: job.overrideJson };
+      try {
+        modelForJob(deps.models, stored);
+        return { stored, invalid: null };
+      } catch (error) {
+        return { stored, invalid: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    if (snapshot?.invalid) throw new Error(`invalid model snapshot: ${snapshot.invalid}`);
+    const model = snapshot ? modelForJob(deps.models, snapshot.stored) : undefined;
+    deps = { ...deps, models: model ? [model] : [] };
     await runSteps(deps, jobId, step);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -495,7 +511,7 @@ async function runSteps(deps: RunnerDeps, jobId: string, step: StepRunner): Prom
           return { errored: String(error) };
         });
     if ('stopped' in verdict) return false;
-    // Read from the current config like repairOutputs; a cached load without repair keeps refunding as before.
+    // Read from the job snapshot like repairOutputs; a cached load without repair keeps refunding as before.
     const deliverOnMiss =
       check.repair &&
       deps.models.find((m) => m.id === setup.model)?.effect?.segments.find((s) => s.id === partId)?.repair
@@ -690,7 +706,7 @@ async function runSteps(deps: RunnerDeps, jobId: string, step: StepRunner): Prom
           const input: SubmitInput = {
             upstreamModel: repair.upstreamModel,
             kind: 'video',
-            prompt: repair.prompt(pass.slots),
+            prompt: renderPrompt(repair.prompt, pass.slots),
             references: [
               { url: deps.fileUrl!(clip), role: 'reference_video' },
               ...pass.slots.map((slot) => ({

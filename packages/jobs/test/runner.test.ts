@@ -4,7 +4,7 @@ import { createDb } from '@shipwords/core/db/client';
 import { user } from '@shipwords/core/db/schema';
 import { consumeQuota } from '@shipwords/core/quota/counters';
 import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { cancelQueued, loadJob, markFailed, markSubmitted, markSucceeded, spendKey } from '../src/lifecycle';
 import { defineModels } from '../src/models';
 import { emailOnFinish } from '../src/notify';
@@ -103,6 +103,60 @@ const deps = (adapter: FakeAdapter) => ({
 });
 
 describe('generation jobs', () => {
+  it('retries a transient snapshot read failure without canceling or refunding an already submitted job', async () => {
+    const { userId, jobId } = await paidJob(10, { status: 'submitted', upstreamJobId: 'up_existing' });
+    const adapter = new FakeAdapter();
+    adapter.polls = [{ state: 'succeeded', files: [{ url: 'https://up/x.png', mediaType: 'image/png' }] }];
+    const select = vi.spyOn(db, 'select').mockImplementationOnce(() => {
+      throw new Error('D1 temporarily unavailable');
+    });
+    const names: string[] = [];
+    let retries = 0;
+    try {
+      await runGeneration(deps(adapter), jobId, {
+        async do(name, fn) {
+          names.push(name);
+          try {
+            return await fn();
+          } catch (error) {
+            if (name !== 'model-snapshot') throw error;
+            retries++;
+            expect((await loadJob(db, jobId))!.status).toBe('submitted');
+            expect((await getBalance(db, userId)).available).toBe(40);
+            expect(adapter.cancelled).toEqual([]);
+            return fn();
+          }
+        },
+        async sleep() {},
+      });
+    } finally {
+      select.mockRestore();
+    }
+    expect(retries).toBe(1);
+    expect(names).not.toContain('abort');
+    expect((await loadJob(db, jobId))!.status).toBe('succeeded');
+    expect((await getBalance(db, userId)).available).toBe(40);
+    expect(adapter.cancelled).toEqual([]);
+  });
+
+  it('snapshot retries exhausted: takes the same fallback as other steps (cancel, fail, refund)', async () => {
+    const { userId, jobId } = await paidJob(10, { status: 'submitted', upstreamJobId: 'up_existing' });
+    const adapter = new FakeAdapter();
+    const select = vi.spyOn(db, 'select').mockImplementationOnce(() => {
+      throw new Error('D1 temporarily unavailable');
+    });
+    try {
+      await runGeneration(deps(adapter), jobId, immediateSteps());
+    } finally {
+      select.mockRestore();
+    }
+    const job = await loadJob(db, jobId);
+    expect(job!.status).toBe('failed');
+    expect(job!.errorMessage).toContain('D1 temporarily unavailable');
+    expect((await getBalance(db, userId)).available).toBe(50);
+    expect(adapter.cancelled).toEqual(['up_existing']);
+  });
+
   it('success: submits with jobId as idempotency key, stores results in R2, no refund', async () => {
     const { userId, jobId } = await paidJob();
     const adapter = new FakeAdapter();
@@ -372,7 +426,16 @@ describe('old Workflow replay', () => {
     adapter.polls = [{ state: 'succeeded', files: [{ url: 'https://up/x.png', mediaType: 'image/png' }] }];
     await runGeneration(deps(adapter), jobId, steps);
     expect(adapter.submits.map((s) => s.key)).toEqual([jobId]);
-    expect(names).toEqual(['load', 'submit', 'poll:0', 'store', 'finish', 'settle', 'cost:0']);
+    expect(names).toEqual([
+      'model-snapshot',
+      'load',
+      'submit',
+      'poll:0',
+      'store',
+      'finish',
+      'settle',
+      'cost:0',
+    ]);
     expect((await loadJob(db, jobId))?.status).toBe('succeeded');
   });
 });

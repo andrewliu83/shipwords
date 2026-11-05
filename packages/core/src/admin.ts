@@ -1,7 +1,15 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { grantCredits } from './credits/ledger';
 import type { Db } from './db/client';
-import { creditAccounts, creditLedger, creditLots, payments, quotaCounters, user, userAttribution } from './db/schema';
+import {
+  creditAccounts,
+  creditLedger,
+  creditLots,
+  payments,
+  quotaCounters,
+  user,
+  userAttribution,
+} from './db/schema';
 import { errorResponse } from './http';
 
 export interface AdminUserListItem {
@@ -85,10 +93,7 @@ export async function getAdminUsers(db: Db, limit = 50, offset = 0): Promise<Adm
   // 批量查归因
   const userIds = users.map((u) => u.id);
   const attributions = userIds.length
-    ? await db
-        .select()
-        .from(userAttribution)
-        .where(sql`${userAttribution.userId} IN ${userIds}`)
+    ? await db.select().from(userAttribution).where(sql`${userAttribution.userId} IN ${userIds}`)
     : [];
   const attrMap = new Map(attributions.map((a) => [a.userId, a]));
 
@@ -101,7 +106,9 @@ export async function getAdminUsers(db: Db, limit = 50, offset = 0): Promise<Adm
           total: sql<number>`sum(${creditLots.remaining})`,
         })
         .from(creditLots)
-        .where(sql`${creditLots.userId} IN ${userIds} and (${creditLots.expiresAt} is null or ${creditLots.expiresAt} > ${now})`)
+        .where(
+          sql`${creditLots.userId} IN ${userIds} and (${creditLots.expiresAt} is null or ${creditLots.expiresAt} > ${now})`,
+        )
         .groupBy(creditLots.userId)
     : [];
   const balanceMap = new Map(balances.map((b) => [b.userId, Number(b.total ?? 0)]));
@@ -186,19 +193,17 @@ export async function getAdminPayments(db: Db, limit = 50, offset = 0): Promise<
  * 获取访客配额计数
  */
 export async function getAdminQuota(db: Db, limit = 50, offset = 0): Promise<AdminQuotaItem[]> {
-  return db
-    .select()
-    .from(quotaCounters)
-    .orderBy(desc(quotaCounters.count))
-    .limit(limit)
-    .offset(offset);
+  return db.select().from(quotaCounters).orderBy(desc(quotaCounters.count)).limit(limit).offset(offset);
 }
 
 /**
  * 手动为用户充值积分
  */
 export class AdminRequestError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -231,8 +236,13 @@ export async function handleAdminGrantCredits(
   const idemKey = `admin-grant:${params.idemKey}`;
   const checkReplay = async () => {
     const existing = await db.query.creditLedger.findFirst({ where: eq(creditLedger.idemKey, idemKey) });
-    if (existing && (existing.userId !== params.userId || existing.kind !== 'grant' ||
-      existing.delta !== params.amount || existing.ref !== params.reason)) {
+    if (
+      existing &&
+      (existing.userId !== params.userId ||
+        existing.kind !== 'grant' ||
+        existing.delta !== params.amount ||
+        existing.ref !== params.reason)
+    ) {
       throw new AdminRequestError(409, 'idempotency key already used for a different grant');
     }
     return existing;

@@ -1,8 +1,9 @@
 // Each site declares its models in two files. site.models.ts (definePublicModels) holds what pages show: ID, name, credit price,
 // guest eligibility, inputs; pages import it, so it ships to the browser. src/models.server.ts (serverModels) adds the upstream model,
-// cost cap, timeout and effect presets by ID. Prices are defined only in site.models.ts; display and charging read the same source.
+// cost cap, timeout and effect presets by ID. D1 overrides provide the effective price/configuration and are snapshotted on each job.
 
 export interface ModelDefinition {
+  enabled?: boolean;
   /** The site's model ID, used in URLs and requests. */
   id: string;
   name: string;
@@ -58,7 +59,7 @@ export interface EffectSegment {
   /** Swappable slots in this shot; filled slots map to @image1, @image2… in this order. */
   slots: readonly string[];
   /** images only contains filled slots; values are how the prompt refers to them (e.g. @image1). */
-  prompt: (images: Readonly<Record<string, string>>) => string;
+  prompt: PromptTemplate<Readonly<Record<string, string>>>;
   parameters: Readonly<Record<string, unknown>>;
   /** Upstream cost cap for this segment (USD string), passed to the upstream as max_cost. */
   maxCost: string;
@@ -97,7 +98,7 @@ export interface EffectRepair {
   /** Video replace model: gets the shots to repair as reference_video and the photos of the slots in that pass as reference_image (1–3). */
   upstreamModel: string;
   /** Instruction for one pass; slots are the people being replaced, in reference image order. */
-  prompt: (slots: readonly string[]) => string;
+  prompt: PromptTemplate<readonly string[]>;
   parameters: Readonly<Record<string, unknown>>;
   /** Cost cap per pass (USD string). */
   maxCost: string;
@@ -184,11 +185,68 @@ export function defineModels<const T extends readonly ModelDefinition[]>(models:
   for (const model of models) {
     if (ids.has(model.id)) throw new Error(`duplicate model id: ${model.id}`);
     ids.add(model.id);
-    if (model.kind === 'music' && (model.effect || model.maxReferences !== 0))
-      throw new Error(`model ${model.id}: music models take no references and no effect`);
-    if (model.effect) validateEffect(model, model.effect);
+    validateModel(model);
   }
   return models;
+}
+
+export interface PromptTemplate<A> {
+  template: string;
+  vars: (arg: A) => Record<string, string>;
+  required?: readonly string[];
+}
+
+export function renderPrompt<A>(prompt: PromptTemplate<A>, arg: A): string {
+  const vars = prompt.vars(arg);
+  if (Object.values(vars).some((value) => typeof value !== 'string'))
+    throw new Error('prompt variables must be strings');
+  validateTemplate(prompt.template, Object.keys(vars), prompt.required);
+  return prompt.template.replace(/\{\{([^{}]+)\}\}/g, (_, key: string) => vars[key]!);
+}
+
+export function promptPlaceholders<A>(prompt: PromptTemplate<A>, args: readonly A[]): string[] {
+  return [...new Set(args.flatMap((arg) => Object.keys(prompt.vars(arg))))];
+}
+
+function validateTemplate(template: string, declared: readonly string[], required: readonly string[] = []) {
+  if (typeof template !== 'string' || template.length > 8000)
+    throw new Error('prompt template must be a string of at most 8000 characters');
+  const used = [...template.matchAll(/\{\{([^{}]+)\}\}/g)].map((match) => match[1]!);
+  for (const key of used) if (!declared.includes(key)) throw new Error(`unknown prompt placeholder: ${key}`);
+  for (const key of required)
+    if (!used.includes(key)) throw new Error(`missing required prompt placeholder: ${key}`);
+  if (template.replace(/\{\{([^{}]+)\}\}/g, '').match(/\{\{|\}\}/))
+    throw new Error('invalid prompt placeholder');
+}
+
+/** Positive USD caps use one exact precision for defaults, overrides and budget arithmetic. */
+export function usdMicros(value: unknown): bigint {
+  if (typeof value !== 'string' || !/^\d+(\.\d{1,6})?$/.test(value))
+    throw new Error('expected a positive maxCost USD string with at most 6 decimal places');
+  const [whole, fraction = ''] = value.split('.');
+  const micros = BigInt(whole!) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+  if (micros <= 0n) throw new Error('expected a positive maxCost USD string');
+  return micros;
+}
+
+export function validateModel(model: ModelDefinition): void {
+  if (model.kind === 'music' && (model.effect || model.maxReferences !== 0))
+    throw new Error(`model ${model.id}: music models take no references and no effect`);
+  if (typeof model.credits === 'number') creditsFor(model, {});
+  if (!Number.isFinite(model.timeoutMinutes) || model.timeoutMinutes <= 0)
+    throw new Error('timeoutMinutes must be positive');
+  if (typeof model.upstreamModel !== 'string' || !model.upstreamModel.trim())
+    throw new Error('upstreamModel must be nonempty');
+  if (model.maxCost !== undefined) usdMicros(model.maxCost);
+  if (model.effect) {
+    validateEffect(model, model.effect);
+    for (const segment of model.effect.segments) {
+      for (const filled of slotCombinations(segment.slots)) {
+        renderPrompt(segment.prompt, Object.fromEntries(filled.map((slot, i) => [slot, `@image${i + 1}`])));
+        if (segment.repair) renderPrompt(segment.repair.prompt, filled);
+      }
+    }
+  }
 }
 
 /** An effect slot as the browser sees it: no prep prompt. */
@@ -324,26 +382,22 @@ function validateEffect(model: ModelDefinition, effect: EffectSpec) {
         throw new Error(`model ${modelId}: segment ${segment.id} uses unknown slot ${slot}`);
     }
   }
-  // Whole-job cap: even with every segment rendered it must not exceed the model's maxCost (compared in cents to avoid float error).
-  const cents = (value: string) => Math.round(Number(value) * 100);
-  if (effect.prep && !(cents(effect.prep.maxCost) > 0))
-    throw new Error(`model ${modelId}: prep needs a positive maxCost`);
+  // Exact micro-dollars include sub-cent prep costs and hedge/repair copies without rounding down.
+  if (effect.prep) usdMicros(effect.prep.maxCost);
   const prepCount = effect.prep ? effect.slots.filter((slot) => slot.prep).length : 0;
   // A slow prep may run twice (runner PREP_HEDGE_MS).
   const total =
     effect.segments.reduce(
       (sum, segment) =>
         sum +
-        cents(segment.maxCost) +
-        (segment.repair ? segment.repair.rounds * cents(segment.repair.maxCost) : 0),
-      0,
+        usdMicros(segment.maxCost) +
+        (segment.repair ? BigInt(segment.repair.rounds) * usdMicros(segment.repair.maxCost) : 0n),
+      0n,
     ) +
-    prepCount * 2 * (effect.prep ? cents(effect.prep.maxCost) : 0);
-  if (effect.segments.some((segment) => !(cents(segment.maxCost) > 0)))
-    throw new Error(`model ${modelId}: every segment needs a positive maxCost`);
-  if (model.maxCost === undefined || total > cents(model.maxCost))
+    BigInt(prepCount * 2) * (effect.prep ? usdMicros(effect.prep.maxCost) : 0n);
+  if (model.maxCost === undefined || total > usdMicros(model.maxCost))
     throw new Error(
-      `model ${modelId}: segment maxCost sum ${total / 100} exceeds model maxCost ${model.maxCost}`,
+      `model ${modelId}: segment maxCost sum ${total} microUSD exceeds model maxCost ${model.maxCost}`,
     );
   if (effect.compose) {
     const asset = /^assets\/[a-z0-9][a-z0-9/_.-]*$/;
@@ -405,7 +459,7 @@ function validateRepair(modelId: string, effect: EffectSpec, segment: EffectSegm
     throw new Error(`${where} needs check, cuts and compose with a single segment`);
   if (!Number.isInteger(repair.rounds) || repair.rounds < 1 || repair.rounds > 5)
     throw new Error(`${where}.rounds must be 1–5`);
-  if (!(Math.round(Number(repair.maxCost) * 100) > 0)) throw new Error(`${where} needs a positive maxCost`);
+  usdMicros(repair.maxCost);
   const shots = repair.shots;
   if (
     shots.length !== segment.cuts.length + 1 ||
@@ -547,7 +601,10 @@ export function effectParts(
     parts.push({
       id: segment.id,
       upstreamModel: model.upstreamModel,
-      prompt: segment.prompt(Object.fromEntries(used.map((slotId, i) => [slotId, `@image${i + 1}`]))),
+      prompt: renderPrompt(
+        segment.prompt,
+        Object.fromEntries(used.map((slotId, i) => [slotId, `@image${i + 1}`])),
+      ),
       references: [
         { url: mediaUrl(referenceVideoOf(segment, used)), role: 'reference_video' },
         ...used.map((slotId) => ({ url: imageUrl(slotId), role: 'reference_image' })),

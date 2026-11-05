@@ -15,6 +15,13 @@
       "when": 1793198539883,
       "tag": "20261028144219_strange_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793853672187,
+      "tag": "20261105044112_lyrical_living_tribunal",
+      "breakpoints": true
     }
   ]
 }

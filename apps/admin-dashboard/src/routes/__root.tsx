@@ -79,6 +79,13 @@ function Layout() {
             <span>生成任务</span>
           </Link>
           <Link
+            to="/models"
+            className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 [&.active]:bg-indigo-600 [&.active]:text-white transition-colors"
+          >
+            <span>🎛️</span>
+            <span>模型配置</span>
+          </Link>
+          <Link
             to="/billing"
             className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 [&.active]:bg-indigo-600 [&.active]:text-white transition-colors"
           >
@@ -106,9 +113,7 @@ function Layout() {
           <div className="text-sm text-slate-400">
             环境: <span className="text-emerald-400 font-mono">生产/预览</span>
           </div>
-          <div className="text-sm font-mono text-slate-400">
-            {new Date().toLocaleDateString('zh-CN')}
-          </div>
+          <div className="text-sm font-mono text-slate-400">{new Date().toLocaleDateString('zh-CN')}</div>
         </header>
 
         <div className="flex-1 p-8">

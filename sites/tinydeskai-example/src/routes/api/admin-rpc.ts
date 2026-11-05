@@ -9,8 +9,10 @@ import {
 } from '@shipwords/core/admin';
 import { errorResponse, json } from '@shipwords/core/http';
 import { getAdminJobs } from '@shipwords/jobs/admin';
+import { getModelConfig, setModelOverride } from '@shipwords/jobs/model-overrides';
 import { createFileRoute } from '@tanstack/react-router';
 import { core } from '~/core.server';
+import models from '~/models.server';
 
 export const Route = createFileRoute('/api/admin-rpc')({
   server: {
@@ -25,23 +27,40 @@ export const Route = createFileRoute('/api/admin-rpc')({
           params?: Record<string, unknown>;
         } | null;
 
-        if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.action !== 'string' ||
-          (body.params !== undefined && (!body.params || typeof body.params !== 'object' || Array.isArray(body.params)))) {
+        if (
+          !body ||
+          typeof body !== 'object' ||
+          Array.isArray(body) ||
+          typeof body.action !== 'string' ||
+          (body.params !== undefined &&
+            (!body.params || typeof body.params !== 'object' || Array.isArray(body.params)))
+        ) {
           return errorResponse(400, 'invalid request');
         }
 
         const { action, params = {} } = body;
         const limit = typeof params.limit === 'number' ? params.limit : 50;
         const offset = typeof params.offset === 'number' ? params.offset : 0;
-        if ((params.limit !== undefined && typeof params.limit !== 'number') ||
+        if (
+          (params.limit !== undefined && typeof params.limit !== 'number') ||
           (params.offset !== undefined && typeof params.offset !== 'number') ||
-          !Number.isSafeInteger(limit) || limit < 1 || limit > 200 ||
-          !Number.isSafeInteger(offset) || offset < 0) {
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 200 ||
+          !Number.isSafeInteger(offset) ||
+          offset < 0
+        ) {
           return errorResponse(400, 'invalid pagination');
         }
 
         try {
           switch (action) {
+            case 'getModelConfig':
+              return json(await getModelConfig(core.db, models));
+            case 'setModelOverride':
+              return json(await setModelOverride(core.db, models, params));
+            case 'clearModelOverride':
+              return json(await setModelOverride(core.db, models, params, true));
             case 'getUsers': {
               const users = await getAdminUsers(core.db, limit, offset);
               return json({ users });
@@ -74,7 +93,12 @@ export const Route = createFileRoute('/api/admin-rpc')({
                 reason?: string;
                 idemKey?: string;
               };
-              if (typeof userId !== 'string' || typeof amount !== 'number' || typeof reason !== 'string' || typeof idemKey !== 'string') {
+              if (
+                typeof userId !== 'string' ||
+                typeof amount !== 'number' ||
+                typeof reason !== 'string' ||
+                typeof idemKey !== 'string'
+              ) {
                 return errorResponse(400, 'userId, amount, reason and idemKey required');
               }
               const result = await handleAdminGrantCredits(core.db, {
@@ -90,7 +114,11 @@ export const Route = createFileRoute('/api/admin-rpc')({
               return errorResponse(400, `unknown action: ${action}`);
           }
         } catch (err: unknown) {
-          if (err instanceof AdminRequestError) return errorResponse(err.status, err.message);
+          if (err instanceof AdminRequestError) {
+            if (action === 'setModelOverride' || action === 'clearModelOverride')
+              return json({ error: err.message }, { status: err.status });
+            return errorResponse(err.status, err.message);
+          }
           return errorResponse(500, 'internal error');
         }
       },

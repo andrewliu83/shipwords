@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { MANAGED_SITES } from '~/lib/sites';
 import { getSiteStatus } from '~/lib/site-rpc';
+import { MANAGED_SITES } from '~/lib/sites';
 
 interface SiteStats {
   siteId: string;
@@ -11,11 +11,13 @@ interface SiteStats {
 
 export const Route = createFileRoute('/')({
   loader: async () => {
-    const stats: SiteStats[] = await Promise.all(MANAGED_SITES.map(async (site) => ({
-      siteId: site.id,
-      siteName: site.name,
-      ...await getSiteStatus({ data: { siteId: site.id } }),
-    })));
+    const stats: SiteStats[] = await Promise.all(
+      MANAGED_SITES.map(async (site) => ({
+        siteId: site.id,
+        siteName: site.name,
+        ...(await getSiteStatus({ data: { siteId: site.id } })),
+      })),
+    );
     return { stats };
   },
   component: DashboardPage,
@@ -36,9 +38,7 @@ function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40">
           <div className="text-sm font-medium text-slate-400">受管站点</div>
-          <div className="text-3xl font-bold text-white mt-2 font-mono">
-            {stats.length}
-          </div>
+          <div className="text-3xl font-bold text-white mt-2 font-mono">{stats.length}</div>
           <div className="text-xs text-slate-500 mt-1">通过 Service Bindings 直连</div>
         </div>
         <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40">
@@ -50,9 +50,7 @@ function DashboardPage() {
         </div>
         <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40">
           <div className="text-sm font-medium text-slate-400">管理模式</div>
-          <div className="text-xl font-bold text-indigo-400 mt-2">
-            单点控制台
-          </div>
+          <div className="text-xl font-bold text-indigo-400 mt-2">单点控制台</div>
           <div className="text-xs text-slate-500 mt-1">零跨库外键，纯 RPC 调度</div>
         </div>
       </div>
@@ -64,49 +62,54 @@ function DashboardPage() {
           <span className="text-xs text-slate-400 font-mono">共 {stats.length} 个站点</span>
         </div>
         <div className="divide-y divide-slate-800">
-          {stats.map((site: { siteId: string; siteName: string; status: 'online' | 'offline'; error?: string }) => (
-            <div key={site.siteId} className="p-6 flex items-center justify-between hover:bg-slate-850/30 transition-colors">
-              <div className="space-y-1">
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-white">{site.siteName}</span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono ${
-                      site.status === 'online'
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}
-                  >
-                    {site.status}
-                  </span>
+          {stats.map(
+            (site: { siteId: string; siteName: string; status: 'online' | 'offline'; error?: string }) => (
+              <div
+                key={site.siteId}
+                className="p-6 flex items-center justify-between hover:bg-slate-850/30 transition-colors"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium text-white">{site.siteName}</span>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono ${
+                        site.status === 'online'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      }`}
+                    >
+                      {site.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono">{site.siteId}</div>
+                  {site.error && <div className="text-xs text-rose-400">{site.error}</div>}
                 </div>
-                <div className="text-xs text-slate-500 font-mono">{site.siteId}</div>
-                {site.error && <div className="text-xs text-rose-400">{site.error}</div>}
+                <div className="flex gap-2">
+                  <Link
+                    to="/users"
+                    search={{ siteId: site.siteId }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
+                  >
+                    用户
+                  </Link>
+                  <Link
+                    to="/jobs"
+                    search={{ siteId: site.siteId }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
+                  >
+                    任务
+                  </Link>
+                  <Link
+                    to="/billing"
+                    search={{ siteId: site.siteId }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
+                  >
+                    支付
+                  </Link>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Link
-                  to="/users"
-                  search={{ siteId: site.siteId }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
-                >
-                  用户
-                </Link>
-                <Link
-                  to="/jobs"
-                  search={{ siteId: site.siteId }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
-                >
-                  任务
-                </Link>
-                <Link
-                  to="/billing"
-                  search={{ siteId: site.siteId }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition-colors"
-                >
-                  支付
-                </Link>
-              </div>
-            </div>
-          ))}
+            ),
+          )}
         </div>
       </div>
 

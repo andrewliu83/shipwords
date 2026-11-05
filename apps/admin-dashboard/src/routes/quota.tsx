@@ -11,7 +11,8 @@ interface SearchParams {
 function parseOffset(value: unknown): number {
   const offset = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0;
   return Number.isSafeInteger(offset) && offset >= 0 && offset <= Number.MAX_SAFE_INTEGER - ADMIN_PAGE_SIZE
-    ? offset : 0;
+    ? offset
+    : 0;
 }
 
 export const Route = createFileRoute('/quota')({
@@ -58,7 +59,9 @@ function QuotaPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="quota-site-select" className="text-xs text-slate-400">选择站点:</label>
+          <label htmlFor="quota-site-select" className="text-xs text-slate-400">
+            选择站点:
+          </label>
           <select
             id="quota-site-select"
             value={search.siteId}
@@ -100,15 +103,9 @@ function QuotaPage() {
               ) : (
                 quota.map((q: AdminQuotaItem) => (
                   <tr key={`${q.key}-${q.window}`} className="hover:bg-slate-850/30 transition-colors">
-                    <td className="py-3 px-4 font-mono text-xs text-white">
-                      {q.key}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-slate-400">
-                      {q.window}
-                    </td>
-                    <td className="py-3 px-4 font-mono font-medium text-amber-400 text-right">
-                      {q.count}
-                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-white">{q.key}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-slate-400">{q.window}</td>
+                    <td className="py-3 px-4 font-mono font-medium text-amber-400 text-right">{q.count}</td>
                   </tr>
                 ))
               )}
@@ -118,21 +115,30 @@ function QuotaPage() {
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800 bg-slate-900/60 text-sm text-slate-400">
           <div className="text-xs">
-            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页 · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {quota.length} 条
+            第 <span className="font-mono text-slate-200">{Math.floor(offset / ADMIN_PAGE_SIZE) + 1}</span> 页
+            · 每页 {ADMIN_PAGE_SIZE} 条 · 本页 {quota.length} 条
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={offset === 0}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })}
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: Math.max(0, offset - ADMIN_PAGE_SIZE) } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               上一页
             </button>
             <button
               type="button"
-              disabled={!!error || quota.length < ADMIN_PAGE_SIZE || offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE}
-              onClick={() => navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })}
+              disabled={
+                !!error ||
+                quota.length < ADMIN_PAGE_SIZE ||
+                offset > Number.MAX_SAFE_INTEGER - 2 * ADMIN_PAGE_SIZE
+              }
+              onClick={() =>
+                navigate({ search: { siteId: search.siteId, offset: offset + ADMIN_PAGE_SIZE } })
+              }
               className="px-3 py-1 text-xs rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               下一页

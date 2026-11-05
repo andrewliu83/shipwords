@@ -17,6 +17,7 @@ import {
   spendKey,
   upstreamIds,
 } from './lifecycle';
+import { effectiveModel, modelForJob, readModelOverride } from './model-overrides';
 import {
   creditsFor,
   effectParts,
@@ -100,7 +101,7 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
       return job;
     }
     if (job.status !== 'queued' && job.status !== 'submitted') return job;
-    const model = models.find((m) => m.id === job.modelId);
+    const model = modelForJob(models, job);
     const limit = ((model?.timeoutMinutes ?? 30) + 15) * 60_000;
     if (Date.now() - job.createdAt < limit) return job;
     core.log('stale job failed on read', { jobId: job.id });
@@ -156,57 +157,78 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
     /** POST /api/jobs */
     async create(request: Request, options?: { idempotencyKey: string }): Promise<Response> {
       const body = await readJson<CreateBody>(request);
-      const model = models.find((m) => m.id === body?.modelId);
-      if (!body || !model) return errorResponse(400, 'unknown_model');
-      let prompt: string;
-      let parameters: Record<string, unknown>;
-      let inputJson: string;
-      if (model.effect) {
-        // Effect prompts stay server-side: the prompt column is an empty string, so publicJob never exposes it.
-        const parts = effectParts(model, body.slots, uploadUrl, (key) => `${baseURL()}/files/${key}`);
-        if (!parts) return errorResponse(400, 'invalid_slots');
-        prompt = '';
-        parameters = {};
-        inputJson = JSON.stringify({ parts });
-      } else {
-        prompt = (body.prompt ?? '').trim();
-        if (!prompt || prompt.length > MAX_PROMPT) return errorResponse(400, 'invalid_prompt');
-        const references = resolveReferences(model, body.references);
-        if (!references) return errorResponse(400, 'invalid_references');
-        parameters = sanitizeParameters(model, body.parameters);
-        const role = referenceRoleOf(model);
-        const input = { references: references.map((url) => ({ url, role })), parameters };
-        if (model.kind === 'music') {
-          if (body.lyrics !== undefined && typeof body.lyrics !== 'string')
-            return errorResponse(400, 'invalid_lyrics');
-          const lyrics = body.lyrics?.trim() || undefined;
-          if (lyrics && lyrics.length > MAX_LYRICS) return errorResponse(400, 'invalid_lyrics');
-          parameters = musicParameters(parameters, lyrics);
-          inputJson = JSON.stringify({ ...input, parameters, ...(lyrics ? { lyrics } : {}) });
-        } else {
-          inputJson = JSON.stringify(input);
-        }
-      }
+      const codeModel = models.find((m) => m.id === body?.modelId);
+      if (!body || !codeModel) return errorResponse(400, 'unknown_model');
       const user = await core.getUser(request);
       if (options && (!user || !/^[a-zA-Z0-9:_-]{1,200}$/.test(options.idempotencyKey)))
         return errorResponse(400, 'invalid_idempotency_key');
       const jobId = options
         ? `job_${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([user!.id, options.idempotencyKey])))), (b) => b.toString(16).padStart(2, '0')).join('')}`
         : newId('job');
+      const existing = options ? await loadJob(core.db, jobId) : null;
+      const { override } = existing
+        ? { override: existing.overrideJson ? JSON.parse(existing.overrideJson) : null }
+        : await readModelOverride(core.db, codeModel.id);
+      const model = effectiveModel(codeModel, override);
+      if (!existing && model.enabled === false) return errorResponse(400, 'model_disabled');
+      const overrideJson = override ? JSON.stringify(override) : null;
+      function normalize(model: ModelDefinition, body: CreateBody) {
+        let prompt: string;
+        let parameters: Record<string, unknown>;
+        let inputJson: string;
+        if (model.effect) {
+          // Effect prompts stay server-side: the prompt column is an empty string, so publicJob never exposes it.
+          const parts = effectParts(model, body.slots, uploadUrl, (key) => `${baseURL()}/files/${key}`);
+          if (!parts) return errorResponse(400, 'invalid_slots');
+          prompt = '';
+          parameters = {};
+          inputJson = JSON.stringify({ parts });
+        } else {
+          prompt = (body.prompt ?? '').trim();
+          if (!prompt || prompt.length > MAX_PROMPT) return errorResponse(400, 'invalid_prompt');
+          const references = resolveReferences(model, body.references);
+          if (!references) return errorResponse(400, 'invalid_references');
+          parameters = sanitizeParameters(model, body.parameters);
+          const role = referenceRoleOf(model);
+          const input = { references: references.map((url) => ({ url, role })), parameters };
+          if (model.kind === 'music') {
+            if (body.lyrics !== undefined && typeof body.lyrics !== 'string')
+              return errorResponse(400, 'invalid_lyrics');
+            const lyrics = body.lyrics?.trim() || undefined;
+            if (lyrics && lyrics.length > MAX_LYRICS) return errorResponse(400, 'invalid_lyrics');
+            parameters = musicParameters(parameters, lyrics);
+            inputJson = JSON.stringify({ ...input, parameters, ...(lyrics ? { lyrics } : {}) });
+          } else {
+            inputJson = JSON.stringify(input);
+          }
+        }
+
+        return { prompt, parameters, inputJson };
+      }
+      const normalized = normalize(model, body);
+      if (normalized instanceof Response) return normalized;
+      const { prompt, parameters, inputJson } = normalized;
 
       // Only the server supplies this key. A lost response must not create another debit or reset a terminal job.
       async function resume(job: JobRow): Promise<Response> {
+        const winnerModel = modelForJob(models, job);
+        const winnerInput = winnerModel ? normalize(winnerModel, body!) : null;
         if (
+          !winnerInput ||
+          winnerInput instanceof Response ||
           job.userId !== user?.id ||
           job.modelId !== model!.id ||
-          job.prompt !== prompt ||
-          job.inputJson !== inputJson
+          job.prompt !== winnerInput.prompt ||
+          job.inputJson !== winnerInput.inputJson
         )
           return errorResponse(409, 'idempotency_conflict');
         job = await healStale(job);
         // The runner's deadline is anchored to creation, not dispatch. Never start expired work.
         // Keep ambiguous submissions through the existing grace period before stale healing refunds them.
-        if (job.status === 'queued' && Date.now() < job.createdAt + model!.timeoutMinutes * 60_000) {
+        if (
+          job.status === 'queued' &&
+          Date.now() < job.createdAt + modelForJob(models, job)!.timeoutMinutes * 60_000
+        ) {
           try {
             await env().GENERATION_WORKFLOW.create({ id: job.id, params: { jobId: job.id } });
           } catch {
@@ -221,10 +243,7 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
         }
         return json({ job: publicJob((await loadJob(core.db, job.id))!, baseURL()) }, { status: 200 });
       }
-      if (options) {
-        const existing = await loadJob(core.db, jobId);
-        if (existing) return resume(existing);
-      }
+      if (existing) return resume(existing);
 
       if (user) {
         const cost = creditsFor(model, parameters);
@@ -235,6 +254,7 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
           kind: model.kind,
           prompt,
           inputJson,
+          overrideJson,
           costCredits: cost,
           upstream: model.upstream,
         };
@@ -281,6 +301,7 @@ export function createJobs(core: Core, models: readonly ModelDefinition[]) {
           kind: model.kind,
           prompt,
           inputJson,
+          overrideJson,
           costCredits: 0,
           quotaJson: JSON.stringify(decision.rules),
           upstream: model.upstream,
